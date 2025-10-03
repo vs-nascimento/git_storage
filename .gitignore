@@ -1,0 +1,59 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+
+# IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+gen/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+
+# Android
+/android/local.properties
+/android/.gradle/
+/android/app/src/main/assets/flutter_assets/
+*.keystore
+*.jks
+
+# iOS
+/ios/Pods/
+/ios/Flutter/App.framework
+/ios/Flutter/engine
+/ios/Flutter/flutter_assets/
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/Debug.xcconfig
+/ios/Flutter/Release.xcconfig
+/ios/.symlinks/
+/ios/Runner/GeneratedPluginRegistrant.*
+
+# macOS
+/macos/Pods/
+/macos/Flutter/ephemeral
+/macos/.symlinks/
+
+# Linux
+/linux/flutter/ephemeral
+
+# Windows
+/windows/flutter/ephemeral
+
+# VS Code
+.vscode/
