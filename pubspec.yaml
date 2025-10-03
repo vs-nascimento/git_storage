@@ -1,6 +1,6 @@
 name: git_storage
 description: A Flutter package for managing Git repositories and file uploads with URL returns.
-version: 0.1.0
+version: 0.2.0
 homepage: https://github.com/yourusername/git_storage
 repository: https://github.com/yourusername/git_storage
 

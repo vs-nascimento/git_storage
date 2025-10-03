@@ -19,8 +19,8 @@ class GitStorageService {
   ///
   /// Returns a [Future] that completes with a [GitStorageFile] object
   /// representing the uploaded file.
-  Future<GitStorageFile> uploadFile(File file, String fileName) async {
-    return await client.uploadFile(file, fileName);
+  Future<GitStorageFile> uploadFile(File file, String path) async {
+    return await client.uploadFile(file, path);
   }
 
   /// Retrieves a file from the Git repository.
@@ -36,5 +36,13 @@ class GitStorageService {
   /// Returns a [Future] that completes with a list of [GitStorageFile] objects.
   Future<List<GitStorageFile>> listFiles(String path) async {
     return await client.listFiles(path);
+  }
+
+  /// Creates a new directory in the Git repository.
+  ///
+  /// Returns a [Future] that completes with a [GitStorageFile] object
+  /// representing the created `.gitkeep` file.
+  Future<GitStorageFile> createFolder(String path) async {
+    return await client.createFolder(path);
   }
 }

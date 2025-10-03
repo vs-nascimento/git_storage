@@ -37,8 +37,8 @@ class _GitHubStoragePageState extends State<GitHubStoragePage> {
   GitStorageFile? _lastUploadedFile;
   List<GitStorageFile> _folderFiles = [];
 
-  final String _repoUrl = '';
-  final String _token = '';
+  final String _repoUrl = '...'; // URL do seu repositório
+  final String _token = 'SEU_TOKEN_AQUI';
   final String _branch = 'main';
 
   late final GitStorageClient _gitClient;

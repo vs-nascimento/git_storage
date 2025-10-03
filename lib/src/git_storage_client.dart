@@ -138,6 +138,7 @@ class GitStorageClient implements GitStorage {
   }
 
   /// Create a "folder" (in practice, it creates a `.gitkeep` file)
+  @override
   Future<GitStorageFile> createFolder(String folderPath) async {
     final placeholder = File('.gitkeep')..writeAsStringSync('');
     return uploadFile(placeholder, "$folderPath/.gitkeep");

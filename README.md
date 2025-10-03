@@ -3,33 +3,35 @@
 [![Pub Version](https://img.shields.io/pub/v/git_storage?style=flat-square)](https://pub.dev/packages/git_storage)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-A Flutter package for managing Git repositories and uploading files, returning the access URL.
+A Flutter package for using GitHub repositories as a simple file storage service.
 
 ## Overview
 
-This package simplifies the process of uploading files to a GitHub repository, treating the repository as a file storage service. It is useful for scenarios where you need a quick and easy way to host files and get a shareable link.
+This package provides a convenient way to interact with GitHub repositories for file management. You can upload, download, and list files, as well as create folders, making it easy to use a repository as a lightweight file backend for your applications.
 
 ## Features
 
--   **File Upload:** Upload files to your GitHub repository with a single method call.
--   **URL Return:** Receive the direct download URL of the file after upload.
--   **Conflict Handling:** Automatically renames files if they already exist in the repository.
--   **Simple to Use:** Clean and straightforward API for easy integration.
+-   **Upload Files:** Upload files to your GitHub repository.
+-   **Get Download URLs:** Automatically receive the direct download URL for your files.
+-   **Conflict Handling:** Automatically renames files if a file with the same name already exists.
+-   **List Files and Folders:** List the contents of a directory.
+-   **Create Folders:** Create "folders" by adding a `.gitkeep` file.
+-   **Simple and Clean API:** Easy-to-use and straightforward integration.
 
 ## Installation
 
-Add this line to your `pubspec.yaml` file:
+Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  git_storage: ^0.1.0 # Check for the latest version on pub.dev
+  git_storage: ^0.2.0 # Check for the latest version
 ```
 
-Then run `flutter pub get`.
+Then, run `flutter pub get`.
 
 ## How to Use
 
-### 1. Import the package
+### 1. Import the Package
 
 ```dart
 import 'package:git_storage/git_storage.dart';
@@ -48,24 +50,67 @@ final client = GitStorageClient(
 );
 ```
 
-### 3. Upload a File
+### 3. API Reference
 
-The `uploadFile` method takes a `File` object and the name of the file to be saved in the repository.
+#### Upload a File
+
+The `uploadFile` method takes a `File` object and the desired path in the repository.
 
 ```dart
 Future<void> upload(File myFile) async {
   try {
-    // Create a unique name for the file
-    final fileName = 'uploads/image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final path = 'uploads/image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final gitFile = await client.uploadFile(myFile, path);
 
-    // Upload
-    final gitFile = await client.uploadFile(myFile, fileName);
-
-    // Use the returned URL
     print('File uploaded successfully!');
     print('Download URL: ${gitFile.downloadUrl}');
-    print('API URL: ${gitFile.url}');
+  } catch (e) {
+    print('An error occurred: $e');
+  }
+}
+```
 
+#### List Files in a Directory
+
+The `listFiles` method returns a list of `GitStorageFile` objects in a given path.
+
+```dart
+Future<void> list(String path) async {
+  try {
+    final files = await client.listFiles(path);
+    for (final file in files) {
+      print('File: ${file.name}, Size: ${file.formattedSize}');
+    }
+  } catch (e) {
+    print('An error occurred: $e');
+  }
+}
+```
+
+#### Get a Specific File
+
+The `getFile` method retrieves information about a single file.
+
+```dart
+Future<void> get(String path) async {
+  try {
+    final file = await client.getFile(path);
+    print('File found: ${file.name}');
+  } catch (e) {
+    print('An error occurred: $e');
+  }
+}
+```
+
+#### Create a Folder
+
+The `createFolder` method creates a new directory by adding a `.gitkeep` file.
+
+```dart
+Future<void> createDirectory(String path) async {
+  try {
+    await client.createFolder(path);
+    print('Folder created successfully!');
   } catch (e) {
     print('An error occurred: $e');
   }
@@ -74,11 +119,11 @@ Future<void> upload(File myFile) async {
 
 ## Example
 
-You can find a complete implementation example in the [`/example`](/example) folder.
+A complete example is available in the [`/example`](/example) directory.
 
 ## Contributions
 
-Contributions are welcome! If you find a bug or have a suggestion for improvement, feel free to open an [Issue](https://github.com/yourusername/git_storage/issues) or submit a [Pull Request](https://github.com/yourusername/git_storage/pulls).
+Contributions are welcome! If you find a bug or have a suggestion, please open an [Issue](https://github.com/yourusername/git_storage/issues) or submit a [Pull Request](https://github.com/yourusername/git_storage/pulls).
 
 ## License
 
