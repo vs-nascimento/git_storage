@@ -144,6 +144,30 @@ class GitStorageClient implements GitStorage {
     return uploadFile(placeholder, "$folderPath/.gitkeep");
   }
 
+  @override
+  Future<void> deleteFile(String path) async {
+    try {
+      final file = await getFile(path);
+      final url = _buildUrl(path);
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: _headers,
+        body: jsonEncode({
+          "message": "Deleted file: $path",
+          "branch": branch,
+          "sha": file.sha,
+        }),
+      );
+      if (response.statusCode == 200) {
+        return;
+      } else {
+        throw GitStorageException(_mapError(response));
+      }
+    } catch (e) {
+      throw GitStorageException('Error deleting file: $e');
+    }
+  }
+
   /// Translates common GitHub errors
   String _mapError(http.Response response) {
     switch (response.statusCode) {

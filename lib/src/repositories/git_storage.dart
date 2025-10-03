@@ -26,4 +26,9 @@ abstract class GitStorage {
   /// Returns a [Future] that completes with a [GitStorageFile] object
   /// representing the created `.gitkeep` file.
   Future<GitStorageFile> createFolder(String path);
+
+  /// Deletes a file from the Git repository.
+  ///
+  /// Returns a [Future] that completes when the file is deleted.
+  Future<void> deleteFile(String path);
 }
