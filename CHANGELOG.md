@@ -1,3 +1,12 @@
+# Changelog
+
+## 0.3.0
+* Added `deleteFile` method to remove files from the repository.
+
+## 0.2.1
+* Fixed a bug in the `uploadFile` method that caused incorrect URL returns in certain scenarios
+
+
 ## 0.2.0
 
 * Added `createFolder`, `listFiles`, and `getFile` methods.

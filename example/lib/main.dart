@@ -37,8 +37,8 @@ class _GitHubStoragePageState extends State<GitHubStoragePage> {
   GitStorageFile? _lastUploadedFile;
   List<GitStorageFile> _folderFiles = [];
 
-  final String _repoUrl = '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';
-  final String _token = 'SEU_TOKEN_AQUI';
+  final String _repoUrl = '...';
+  final String _token = '...';
   final String _branch = 'main';
 
   late final GitStorageClient _gitClient;
@@ -93,14 +93,43 @@ class _GitHubStoragePageState extends State<GitHubStoragePage> {
     }
   }
 
+  void deleteFile(String path) async {
+    setState(() {
+      _isLoading = true;
+      _statusMessage = 'Deletando arquivo...';
+    });
+
+    try {
+      await _gitClient.deleteFile(path);
+      setState(() {
+        _statusMessage = 'Arquivo deletado com sucesso!';
+        _lastUploadedFile = null;
+      });
+      _loadFolderFiles(); // atualizar lista de arquivos
+    } catch (e) {
+      setState(() => _statusMessage = 'Erro ao deletar arquivo: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   Widget _buildFileCard(GitStorageFile file) {
     return Card(
       child: ListTile(
         title: Text(file.path),
         subtitle: Text('Tamanho: ${file.formattedSize}'),
-        trailing: IconButton(
-          icon: const Icon(Icons.open_in_new),
-          onPressed: () => _openFile(file.downloadUrl),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.open_in_new),
+              onPressed: () => _openFile(file.downloadUrl),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () => deleteFile(file.path),
+            ),
+          ],
         ),
       ),
     );

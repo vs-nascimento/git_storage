@@ -24,7 +24,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  git_storage: ^0.2.1 # Check for the latest version
+  git_storage: ^0.3.0 # Check for the latest version
 ```
 
 Then, run `flutter pub get`.
@@ -116,6 +116,21 @@ Future<void> createDirectory(String path) async {
   }
 }
 ```
+
+#### Delete a File
+The `deleteFile` method removes a file from the repository.
+
+```dart
+Future<void> delete(String path) async {
+  try {
+    await client.deleteFile(path);
+    print('File deleted successfully!');
+  } catch (e) {
+    print('An error occurred: $e');
+  }
+}
+```
+
 
 ## Example
 
