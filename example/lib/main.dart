@@ -39,7 +39,7 @@ class _GitHubStoragePageState extends State<GitHubStoragePage> {
 
   final String _repoUrl = '';
   final String _token = '';
-  final String _branch = '';
+  final String _branch = 'main';
 
   late final GitStorageClient _gitClient;
 

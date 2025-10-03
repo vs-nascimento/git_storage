@@ -1,5 +1,6 @@
 import 'dart:math';
 
+/// Formats the size of a file in bytes to a human-readable string.
 String formatFileSize(int bytes) {
   if (bytes <= 0) return "0 B";
   const suffixes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
