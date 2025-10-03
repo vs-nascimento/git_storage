@@ -11,4 +11,12 @@ class GitStorageService {
   Future<GitStorageFile> uploadFile(File file, String fileName) async {
     return await client.uploadFile(file, fileName);
   }
+
+  Future<GitStorageFile> getFile(String path) async {
+    return await client.getFile(path);
+  }
+
+  Future<List<GitStorageFile>> listFiles(String path) async {
+    return await client.listFiles(path);
+  }
 }
