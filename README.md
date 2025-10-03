@@ -24,7 +24,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  git_storage: ^0.2.0 # Check for the latest version
+  git_storage: ^0.2.1 # Check for the latest version
 ```
 
 Then, run `flutter pub get`.
