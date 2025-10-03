@@ -3,83 +3,83 @@
 [![Pub Version](https://img.shields.io/pub/v/git_storage?style=flat-square)](https://pub.dev/packages/git_storage)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-Um pacote Flutter para gerenciar repositórios Git e fazer upload de arquivos, retornando a URL de acesso.
+A Flutter package for managing Git repositories and uploading files, returning the access URL.
 
-## Visão Geral
+## Overview
 
-Este pacote simplifica o processo de upload de arquivos para um repositório GitHub, tratando o repositório como um serviço de armazenamento de arquivos. Ele é útil para cenários onde você precisa de uma forma rápida e fácil de hospedar arquivos e obter um link compartilhável.
+This package simplifies the process of uploading files to a GitHub repository, treating the repository as a file storage service. It is useful for scenarios where you need a quick and easy way to host files and get a shareable link.
 
-## Funcionalidades
+## Features
 
--   **Upload de Arquivos:** Envie arquivos para o seu repositório GitHub com uma única chamada de método.
--   **Retorno de URL:** Receba a URL de download direto do arquivo após o upload.
--   **Tratamento de Conflitos:** Renomeia arquivos automaticamente se já existirem no repositório.
--   **Simples de Usar:** API limpa e direta para facilitar a integração.
+-   **File Upload:** Upload files to your GitHub repository with a single method call.
+-   **URL Return:** Receive the direct download URL of the file after upload.
+-   **Conflict Handling:** Automatically renames files if they already exist in the repository.
+-   **Simple to Use:** Clean and straightforward API for easy integration.
 
-## Instalação
+## Installation
 
-Adicione esta linha ao seu arquivo `pubspec.yaml`:
+Add this line to your `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  git_storage: ^0.1.0 # Verifique a versão mais recente em pub.dev
+  git_storage: ^0.1.0 # Check for the latest version on pub.dev
 ```
 
-Em seguida, execute `flutter pub get`.
+Then run `flutter pub get`.
 
-## Como Usar
+## How to Use
 
-### 1. Importe o pacote
+### 1. Import the package
 
 ```dart
 import 'package:git_storage/git_storage.dart';
 import 'dart:io';
 ```
 
-### 2. Inicialize o Cliente
+### 2. Initialize the Client
 
-Para usar o `GitStorageClient`, você precisa de um [Token de Acesso Pessoal (PAT)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token) do GitHub com permissões de `repo`.
+To use `GitStorageClient`, you need a GitHub [Personal Access Token (PAT)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token) with `repo` permissions.
 
 ```dart
 final client = GitStorageClient(
-  repoUrl: 'https://github.com/seu-usuario/seu-repositorio.git',
-  token: 'SEU_GITHUB_PAT',
-  branch: 'main', // Opcional, o padrão é 'main'
+  repoUrl: 'https://github.com/your-user/your-repository.git',
+  token: 'YOUR_GITHUB_PAT',
+  branch: 'main', // Optional, defaults to 'main'
 );
 ```
 
-### 3. Faça o Upload de um Arquivo
+### 3. Upload a File
 
-O método `uploadFile` recebe um objeto `File` e o nome do arquivo a ser salvo no repositório.
+The `uploadFile` method takes a `File` object and the name of the file to be saved in the repository.
 
 ```dart
 Future<void> upload(File myFile) async {
   try {
-    // Crie um nome único para o arquivo
-    final fileName = 'uploads/imagem_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    // Create a unique name for the file
+    final fileName = 'uploads/image_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-    // Faça o upload
+    // Upload
     final gitFile = await client.uploadFile(myFile, fileName);
 
-    // Use a URL retornada
-    print('Arquivo enviado com sucesso!');
-    print('URL de Download: ${gitFile.downloadUrl}');
-    print('URL da API: ${gitFile.url}');
+    // Use the returned URL
+    print('File uploaded successfully!');
+    print('Download URL: ${gitFile.downloadUrl}');
+    print('API URL: ${gitFile.url}');
 
   } catch (e) {
-    print('Ocorreu um erro: $e');
+    print('An error occurred: $e');
   }
 }
 ```
 
-## Exemplo
+## Example
 
-Você pode encontrar um exemplo completo de implementação na pasta [`/example`](/example).
+You can find a complete implementation example in the [`/example`](/example) folder.
 
-## Contribuições
+## Contributions
 
-Contribuições são bem-vindas! Se você encontrar um bug ou tiver uma sugestão de melhoria, sinta-se à vontade para abrir uma [Issue](https://github.com/yourusername/git_storage/issues) ou enviar um [Pull Request](https://github.com/yourusername/git_storage/pulls).
+Contributions are welcome! If you find a bug or have a suggestion for improvement, feel free to open an [Issue](https://github.com/yourusername/git_storage/issues) or submit a [Pull Request](https://github.com/yourusername/git_storage/pulls).
 
-## Licença
+## License
 
-Este pacote está licenciado sob a [Licença MIT](LICENSE).
+This package is licensed under the [MIT License](LICENSE).

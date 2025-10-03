@@ -1,3 +1,4 @@
-## 0.0.1
+## 0.1.0
 
-* TODO: Describe initial release.
+* Initial release of the package.
+* Includes features for file upload, URL return, and conflict handling.
