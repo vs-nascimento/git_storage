@@ -8,6 +8,7 @@ import 'models/git_storage_file.dart';
 import 'repositories/git_storage.dart';
 import 'services/git_storage_service.dart';
 import 'services/logging.dart';
+import 'utils/json_isolates.dart';
 
 /// A client for interacting with a Git repository as a storage system.
 class GitStorageClient implements GitStorage {
@@ -107,7 +108,7 @@ class GitStorageClient implements GitStorage {
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
-        final jsonResp = jsonDecode(response.body);
+        final jsonResp = await JsonIsolates.decode(response.body);
         _emit(LogLevel.info, 'upload ok path=$filePath');
         return GitStorageFile.fromJson(jsonResp['content']);
       } else if (response.statusCode == 422) {
@@ -135,7 +136,7 @@ class GitStorageClient implements GitStorage {
       final response = await http.get(Uri.parse(url), headers: _headers);
 
       if (response.statusCode == 200) {
-        final jsonResp = jsonDecode(response.body);
+        final jsonResp = await JsonIsolates.decode(response.body) as Map<String, dynamic>;
         _emit(LogLevel.info, 'getFile ok path=$path');
         return GitStorageFile.fromJson(jsonResp);
       } else {
@@ -156,7 +157,7 @@ class GitStorageClient implements GitStorage {
     final url = "${_buildUrl(path)}?ref=$branch";
     final response = await http.get(Uri.parse(url), headers: _headers);
     if (response.statusCode == 200) {
-      final jsonResp = jsonDecode(response.body);
+      final jsonResp = await JsonIsolates.decode(response.body) as Map<String, dynamic>;
       final contentBase64 = (jsonResp['content'] as String?)?.replaceAll('\n', '') ?? '';
       if (contentBase64.isEmpty) {
         _emit(LogLevel.error, 'getBytes empty content path=$path');
@@ -174,7 +175,7 @@ class GitStorageClient implements GitStorage {
   Future<String> getString(String path) async {
     final bytes = await getBytes(path);
     _emit(LogLevel.debug, 'getString len=${bytes.length} path=$path');
-    return utf8.decode(bytes);
+    return JsonIsolates.utf8Decode(bytes);
   }
 
   /// Baixa bytes diretamente de uma URL (ex.: download_url do GitHub).
@@ -201,7 +202,7 @@ class GitStorageClient implements GitStorage {
       final response = await http.get(Uri.parse(url), headers: _headers);
 
       if (response.statusCode == 200) {
-        final jsonResp = jsonDecode(response.body) as List;
+        final jsonResp = await JsonIsolates.decode(response.body) as List;
         _emit(LogLevel.info, 'listFiles ok count=${jsonResp.length}');
         return jsonResp.map((item) => GitStorageFile.fromJson(item)).toList();
       } else {
@@ -291,7 +292,7 @@ class GitStorageClient implements GitStorage {
     );
 
     if (response.statusCode == 201 || response.statusCode == 200) {
-      final jsonResp = jsonDecode(response.body);
+      final jsonResp = await JsonIsolates.decode(response.body) as Map<String, dynamic>;
       _emit(LogLevel.info, 'putContent ok path=$path');
       return GitStorageFile.fromJson(jsonResp['content']);
     }

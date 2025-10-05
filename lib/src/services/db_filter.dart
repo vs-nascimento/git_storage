@@ -43,8 +43,8 @@ class DBFilter {
     bool found = true;
     for (final part in fieldPath.split('.')) {
       if (current is Map<String, dynamic>) {
-        if ((current as Map<String, dynamic>).containsKey(part)) {
-          current = (current as Map<String, dynamic>)[part];
+        if (current.containsKey(part)) {
+          current = current[part];
         } else {
           found = false;
           current = null;
@@ -64,19 +64,19 @@ class DBFilter {
         return left != value;
       case DBOperator.greaterThan:
         return (left is Comparable && value is Comparable)
-            ? (left as Comparable).compareTo(value) > 0
+            ? left.compareTo(value) > 0
             : false;
       case DBOperator.greaterOrEqual:
         return (left is Comparable && value is Comparable)
-            ? (left as Comparable).compareTo(value) >= 0
+            ? left.compareTo(value) >= 0
             : false;
       case DBOperator.lessThan:
         return (left is Comparable && value is Comparable)
-            ? (left as Comparable).compareTo(value) < 0
+            ? left.compareTo(value) < 0
             : false;
       case DBOperator.lessOrEqual:
         return (left is Comparable && value is Comparable)
-            ? (left as Comparable).compareTo(value) <= 0
+            ? left.compareTo(value) <= 0
             : false;
       case DBOperator.arrayContains:
         return (left is List) ? left.contains(value) : false;
@@ -120,15 +120,15 @@ class DBFilter {
         return false;
       case DBOperator.containsAll:
         return (left is List && value is List)
-            ? (value as List).every((v) => (left as List).contains(v))
+            ? value.every((v) => left.contains(v))
             : false;
       case DBOperator.between:
         if (left is Comparable && value is List && value.length == 2) {
           final a = value[0];
           final b = value[1];
           if (a is Comparable && b is Comparable) {
-            final cmpA = (left as Comparable).compareTo(a);
-            final cmpB = (left as Comparable).compareTo(b);
+            final cmpA = left.compareTo(a);
+            final cmpB = left.compareTo(b);
             return cmpA >= 0 && cmpB <= 0;
           }
         }

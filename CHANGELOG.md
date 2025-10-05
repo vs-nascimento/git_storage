@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2.1.0
+- Performance: Offload JSON encode/decode and UTF-8 conversions to isolates.
+- Client: Parse `getFile`, `listFiles`, and `getBytes` JSON responses in isolates.
+- DB: Use isolates for document encode (`put`) and bulk reads (`getAll`).
+- Crypto: Use isolates for envelope JSON creation and plaintext UTF-8 conversions.
+- Docs: README updated in English with performance notes and tips.
+- Web/WASM: Package not compatible with Web/WASM runtime yet; see https://dart.dev/web/wasm.
+
 ## 2.0.0
 - Breaking: `GitStorageDB.put`, `add`, and `update` now use named parameters.
   - `put({ required String collection, required String id, required Map<String, dynamic> json, Map<String, Type>? schema, String? message })`

@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
 import '../exceptions/exceptions.dart';
 import 'logging.dart';
+import '../utils/json_isolates.dart';
 
 /// Tipos de criptografia suportados para o GitStorageDB.
 enum CryptoType {
@@ -62,7 +62,8 @@ class CryptoService {
       _log(LogLevel.debug, 'EncryptString none -> plaintext length=${plaintext.length}');
       return plaintext;
     }
-    return encryptBytes(utf8.encode(plaintext), passphrase);
+    final bytes = await JsonIsolates.utf8Encode(plaintext);
+    return encryptBytes(bytes, passphrase);
   }
 
   Future<String> encryptBytes(List<int> data, String passphrase) async {
@@ -93,7 +94,8 @@ class CryptoService {
         'mac': base64Encode(b.mac.bytes),
       };
       _log(LogLevel.debug, 'EncryptBytes $name ok len=${data.length}');
-      return jsonEncode(e);
+      // Offload JSON encoding to an isolate for large envelopes
+      return await JsonIsolates.encode(e);
     } catch (e) {
       throw GitStorageException('Erro ao criptografar: $e');
     }
@@ -108,13 +110,14 @@ class CryptoService {
         return bytes;
       } catch (_) {
         // If not base64, maybe it was plaintext string -> return UTF-8 bytes
-        final bytes = utf8.encode(envelopeString);
+        final bytes = await JsonIsolates.utf8Encode(envelopeString);
         _log(LogLevel.debug, 'DecryptBytes none plaintext -> len=${bytes.length}');
         return bytes;
       }
     }
     try {
-      final j = jsonDecode(envelopeString) as Map<String, dynamic>;
+      // Parse envelope JSON in an isolate
+      final j = await JsonIsolates.decodeMap(envelopeString);
       final s = base64Decode(j['salt']);
       final n = base64Decode(j['nonce']);
       final c = base64Decode(j['ciphertext']);
@@ -136,12 +139,13 @@ class CryptoService {
   Future<Map<String, dynamic>> decryptToJson(String envelopeString, String passphrase) async {
     if (type == CryptoType.none) {
       // No encryption: envelopeString is the clear JSON
-      final jsonObj = jsonDecode(envelopeString) as Map<String, dynamic>;
+      final jsonObj = await JsonIsolates.decodeMap(envelopeString);
       _log(LogLevel.debug, 'DecryptJson none keys=${jsonObj.length}');
       return jsonObj;
     }
     final bytes = await decryptToBytes(envelopeString, passphrase);
-    final obj = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+    final text = await JsonIsolates.utf8Decode(bytes);
+    final obj = await JsonIsolates.decodeMap(text);
     _log(LogLevel.debug, 'DecryptJson keys=${obj.length}');
     return obj;
   }

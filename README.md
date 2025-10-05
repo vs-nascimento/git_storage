@@ -20,7 +20,21 @@ This package provides a convenient way to interact with GitHub repositories for 
 - **GitStorageDB:** Store JSON (encrypted or plain) by collection.
 - **Collections, Query and Transactions:** Create/drop collections, query with filters, and batch operations.
  - **Crypto variants:** AES-GCM-128/256 and ChaCha20-Poly1305 with configurable PBKDF2 iterations.
- - **Logging:** Pluggable `LogListener` with levels (none, info, debug, error) for API and DB operations.
+  - **Logging:** Pluggable `LogListener` with levels (none, info, debug, error) for API and DB operations.
+
+## What's New in 2.1.0
+
+- Performance: JSON encode/decode and UTF-8 conversions are offloaded to isolates across client and DB operations.
+- Client: `getFile`, `listFiles`, and `getBytes` responses are parsed in isolates for improved responsiveness.
+- DB: `put` encodes documents and `getAll` performs bulk reads using isolates with bounded concurrency.
+- Crypto: Envelope JSON creation and plaintext conversions use isolates for better throughput.
+- Docs: README updated with performance notes and tips.
+
+### Web/WASM Compatibility
+
+This package currently is not compatible with the Web/WASM runtime. Some implementation aspects (e.g., isolates and `dart:io` usage) are not supported on WASM at the moment. For details on Dart WebAssembly, see `https://dart.dev/web/wasm`.
+
+  - **Performance:** JSON encode/decode and UTF-8 conversions are offloaded to isolates for large payloads.
 
 ## Installation
 
@@ -248,6 +262,12 @@ Future<void> exampleDb() async {
 
 Security note: choose a strong passphrase and rotate it as needed. When `cryptoType != CryptoType.none`, documents are encrypted client-side using AES-GCM, with keys derived via PBKDF2-HMAC-SHA256.
 
+### Performance Notes
+
+- JSON parsing and string encoding/decoding can be expensive for large documents. This package now offloads these operations to isolates when appropriate to keep the main thread responsive.
+- Tune `readConcurrency` in `GitStorageDBConfig` for faster bulk reads depending on your environment and repository size.
+- Prefer `getBytesFromUrl(download_url)` when available to skip extra metadata calls.
+
 #### ID Strategy (UUID, timestamp, manual)
 
 You can automatically generate IDs when adding documents by choosing a strategy, or set IDs manually. You can also create a `GitStorageDoc` with the desired strategy:
@@ -439,16 +459,6 @@ final db = GitStorageDB(
 );
 ```
 
-Example output (with fallback console logs):
-
-```
-[GitStorageDB] createCollection: users
-[GitStorageDB] put: users/u1 message=
-[GitStorageDB] get: users/u1
-[GitStorageDB] get: users/u1 ok keys=2
-[GitStorageDB] query: users filters=1 orderBy=profile.lastLogin desc=true limit=10 offset=0
-[GitStorageDB] query: users returned 10 documents (limit applied)
-```
 
 Notes:
 - When `logListener` is provided and the message level is >= `logLevel`, the listener handles logs.

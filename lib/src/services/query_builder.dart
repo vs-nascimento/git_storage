@@ -69,7 +69,7 @@ class QueryBuilder {
         final va = a.getAtPath(_orderBy!);
         final vb = b.getAtPath(_orderBy!);
         if (va is Comparable && vb is Comparable) {
-          final cmp = (va as Comparable).compareTo(vb);
+          final cmp = va.compareTo(vb);
           return _descending ? -cmp : cmp;
         }
         return 0;

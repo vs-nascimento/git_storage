@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'dart:developer' as dev;
 
 import 'package:git_storage/git_storage.dart';
+import '../utils/json_isolates.dart';
 
 /// Valida um mapa de dados contra um schema simples de chave->Tipo.
 /// Suporta caminhos com ponto para objetos aninhados (ex.: 'profile.email').
@@ -163,7 +163,8 @@ class GitStorageDB {
     if (schema != null) {
       _validateSchema(json, schema);
     }
-    final clear = jsonEncode(json);
+    // Offload JSON encoding to isolate for large documents
+    final clear = await JsonIsolates.encode(json);
     final envelope = await crypto.encryptString(clear, passphrase ?? '');
     await client.putString(envelope, _docPath(collection, id),
         message: message ?? 'DB put $collection/$id');
@@ -332,14 +333,14 @@ class GitStorageDB {
           String envelope;
           if (f.downloadUrl.isNotEmpty) {
             final bytes = await client.getBytesFromUrl(f.downloadUrl);
-            envelope = utf8.decode(bytes);
+            envelope = await JsonIsolates.utf8Decode(bytes);
           } else {
             envelope = await client.getString(f.path);
           }
           final data = await crypto.decryptToJson(envelope, passphrase ?? '');
           final id = f.name.replaceAll(suffix, '');
           return GitStorageDoc(id: id, data: data);
-        } catch (_) {
+        } catch (e) {
           return null; // Ignora documentos inválidos
         }
       }).toList();
