@@ -18,7 +18,7 @@ class QueryBuilder {
       : collection = collection,
         _db = db;
 
-  QueryBuilder where(String fieldPath, DBOperator op, dynamic value) {
+  QueryBuilder where(String fieldPath, DBOperator op, [dynamic value]) {
     _filters.add(DBFilter.where(fieldPath, op, value));
     return this;
   }

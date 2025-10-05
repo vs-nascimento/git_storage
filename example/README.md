@@ -17,16 +17,16 @@ The example app lets you:
 
 ## Encrypted JSON DB (code)
 
-See `lib/db_example.dart` for a simple usage of `GitStorageDB`:
+For simple `GitStorageDB` usage, check the console entrypoints under `lib/`: `main_seed.dart`, `main_assign_filters.dart`, and `main_queries.dart`.
 
 ```dart
 final client = GitStorageClient(repoUrl: 'https://github.com/your/repo.git', token: 'PAT');
 final db = GitStorageDB(client: client, passphrase: 'strong-passphrase');
 
 await db.createCollection('users');
-await db.put('users', 'u1', {'name': 'Alice'});
+await db.put(collection: 'users', id: 'u1', json: {'name': 'Alice'});
 final alice = await db.get('users', 'u1');
-await db.update('users', 'u1', (doc) { doc['name'] = 'Alice Updated'; return doc; });
+await db.update(collection: 'users', id: 'u1', updater: (doc) { doc['name'] = 'Alice Updated'; return doc; });
 await db.delete('users', 'u1');
 ```
 
@@ -43,15 +43,15 @@ final dbCfg = GitStorageDB.fromConfig(GitStorageDBConfig(
 
 Run the app with `flutter run`.
 
-## CLI mains (sem UI)
+## CLI entrypoints (no UI)
 
-Além do app Flutter, há três entrypoints de console em `lib/` que você pode executar com `dart run`:
+Besides the Flutter app, there are three console entrypoints in `lib/` that you can run with `dart run`:
 
-- `lib/main_seed.dart`: semeia coleções `users` e `products` com dados básicos.
-- `lib/main_assign_filters.dart`: filtra usuários e atribui produtos usando `QueryBuilder`.
-- `lib/main_queries.dart`: demonstra consultas diversas (where, orderBy, limit, offset, arrayContains).
+- `lib/main_seed.dart`: seeds `users` and `products` collections with basic data.
+- `lib/main_assign_filters.dart`: filters users and assigns products using `QueryBuilder`.
+- `lib/main_queries.dart`: demonstrates various queries (where, orderBy, limit, offset, arrayContains).
 
-Como executar (configure variáveis de ambiente ou edite o arquivo):
+How to run (configure environment variables or edit the files):
 
 ```
 export REPO_URL=https://github.com/your-user/your-repository.git
@@ -64,4 +64,4 @@ dart run lib/main_assign_filters.dart
 dart run lib/main_queries.dart
 ```
 
-Observação: operações que geram commits em série podem demorar devido à API do GitHub. Evite concorrência alta para não gerar conflitos de branch (HTTP 409).
+Note: operations that generate a series of commits can take time due to the GitHub API. Avoid high concurrency to prevent branch conflicts (HTTP 409).

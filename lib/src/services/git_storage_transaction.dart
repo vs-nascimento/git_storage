@@ -1,53 +1,87 @@
-import '../git_storage_client.dart';
-import 'crypto_service.dart';
-import 'git_storage_db.dart';
+import 'dart:developer' as dev;
 import '../models/id_strategy.dart';
+import 'git_storage_db.dart';
+import 'logging.dart';
 
-/// Representa uma transação de operações no GitStorageDB.
-class GitStorageTransaction {
+/// Represents a client-side transaction of operations on GitStorageDB.
+class GitDBTransaction {
   final GitStorageDB db;
 
   final List<Future<void> Function()> _ops = [];
 
-  GitStorageTransaction(this.db);
+  GitDBTransaction(this.db);
 
   void _log(String message) {
-    if (db.enableLogs) {
-      print('[GitStorageTransaction] $message');
+    if (db.logListener != null && db.logLevel.index <= LogLevel.info.index) {
+      db.logListener!.call('GitDBTransaction', LogLevel.info, message);
+    } else if (db.enableLogs) {
+      dev.log(message, name: 'GitDBTransaction', level: 800);
     }
   }
 
-  /// Enfileira criação/atualização de documento.
-  void put(String collection, String id, Map<String, dynamic> json, {String? message}) {
+  /// Queues a create/update document operation.
+  void put({
+    required String collection,
+    required String id,
+    required Map<String, dynamic> json,
+    Map<String, Type>? schema,
+    String? message,
+  }) {
     _log('queue put: $collection/$id');
-    _ops.add(() => db.put(collection, id, json, message: message));
+    _ops.add(() => db.put(
+        collection: collection,
+        id: id,
+        json: json,
+        schema: schema,
+        message: message));
   }
 
-  /// Enfileira adição com geração de ID por estratégia. Retorna o ID resolvido imediatamente.
-  /// Observação: o ID é gerado agora, mas a gravação ocorre no commit.
-  String add(String collection, Map<String, dynamic> json,
-      {IdStrategy strategy = IdStrategy.uuidV4, String? manualId, String? message}) {
+  /// Queues an add operation with ID generation strategy. Returns the resolved ID immediately.
+  /// Note: the ID is generated now, but the write occurs on commit.
+  String add({
+    required String collection,
+    required Map<String, dynamic> json,
+    IdStrategy strategy = IdStrategy.uuidV4,
+    String? manualId,
+    Map<String, Type>? schema,
+    String? message,
+  }) {
     final id = IdGenerator.generate(strategy, manualId: manualId);
     _log('queue add: $collection id=$id strategy=$strategy');
-    _ops.add(() => db.put(collection, id, json, message: message));
+    _ops.add(() => db.put(
+        collection: collection,
+        id: id,
+        json: json,
+        schema: schema,
+        message: message));
     return id;
   }
 
-  /// Enfileira exclusão de documento.
+  /// Queues a document deletion.
   void delete(String collection, String id, {String? message}) {
     _log('queue delete: $collection/$id');
-    _ops.add(() => db.delete(collection, id, message: message));
+    _ops.add(() => db.delete(collection: collection, id: id, message: message));
   }
 
-  /// Enfileira atualização com função updater.
-  void update(String collection, String id,
-      Map<String, dynamic> Function(Map<String, dynamic> current) updater,
-      {String? message}) {
+  /// Queues an update with updater function.
+  void update({
+    required String collection,
+    required String id,
+    required Map<String, dynamic> Function(Map<String, dynamic> current)
+        updater,
+    Map<String, Type>? schema,
+    String? message,
+  }) {
     _log('queue update: $collection/$id');
-    _ops.add(() => db.update(collection, id, updater, message: message));
+    _ops.add(() => db.update(
+        collection: collection,
+        id: id,
+        updater: updater,
+        schema: schema,
+        message: message));
   }
 
-  /// Executa todas as operações sequencialmente.
+  /// Executes all queued operations sequentially.
   Future<void> commit() async {
     _log('commit start: ${_ops.length} ops');
     for (final op in _ops) {

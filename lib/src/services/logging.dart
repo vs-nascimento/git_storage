@@ -1,3 +1,5 @@
+import 'dart:developer' as dev;
+
 typedef LogListener = void Function(String tag, LogLevel level, String message);
 
 enum LogLevel {
@@ -15,8 +17,9 @@ class DefaultLogListener {
   void call(String tag, LogLevel msgLevel, String message) {
     if (msgLevel.index > level.index) return;
     final ts = DateTime.now().toIso8601String();
-    // Format: [ts] [level] [tag] message
-    print('[$ts] [${_label(msgLevel)}] [$tag] $message');
+    // Use developer.log to emit structured logs with name and level
+    dev.log('[$ts] [${_label(msgLevel)}] $message',
+        name: tag, level: _intLevel(msgLevel), time: DateTime.now());
   }
 
   String _label(LogLevel l) {
@@ -29,6 +32,19 @@ class DefaultLogListener {
         return 'DEBUG';
       case LogLevel.none:
         return 'NONE';
+    }
+  }
+
+  int _intLevel(LogLevel l) {
+    switch (l) {
+      case LogLevel.error:
+        return 1000;
+      case LogLevel.info:
+        return 800;
+      case LogLevel.debug:
+        return 500;
+      case LogLevel.none:
+        return 0;
     }
   }
 }

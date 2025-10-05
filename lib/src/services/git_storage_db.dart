@@ -1,11 +1,55 @@
 import 'dart:convert';
+import 'dart:developer' as dev;
 
 import 'package:git_storage/git_storage.dart';
-import '../models/migration.dart';
-import 'logging.dart';
 
-/// GitStorageDB: Um "banco" de documentos JSON por cima do Git.
-/// Cada coleção é uma pasta; cada documento é um arquivo `<id>.json.enc`.
+/// Valida um mapa de dados contra um schema simples de chave->Tipo.
+/// Suporta caminhos com ponto para objetos aninhados (ex.: 'profile.email').
+void _validateSchema(Map<String, dynamic> data, Map<String, Type> schema) {
+  for (final entry in schema.entries) {
+    final path = entry.key.split('.');
+    final expected = entry.value;
+    dynamic cur = data;
+    for (int i = 0; i < path.length; i++) {
+      final key = path[i];
+      if (cur is! Map) {
+        throw GitStorageException(
+            "Contract violation: path '${entry.key}' expected Map at '${path[i - 1]}'");
+      }
+      if (!cur.containsKey(key)) {
+        throw GitStorageException(
+            "Contract violation: missing key '${entry.key}'");
+      }
+      cur = cur[key];
+      if (i == path.length - 1) {
+        if (cur == null) {
+          throw GitStorageException(
+              "Contract violation: key '${entry.key}' must not be null");
+        }
+        final ok = _matchesType(cur, expected);
+        if (!ok) {
+          throw GitStorageException(
+              "Contract violation: key '${entry.key}' expected ${expected.toString()}, got ${cur.runtimeType}");
+        }
+      }
+    }
+  }
+}
+
+bool _matchesType(dynamic value, Type expected) {
+  if (expected == String) return value is String;
+  if (expected == int) return value is int;
+  if (expected == double) return value is double;
+  if (expected == num) return value is num;
+  if (expected == bool) return value is bool;
+  if (expected == List) return value is List;
+  if (expected == Map) return value is Map;
+  // Fallback: comparação direta de tipo
+  return value.runtimeType == expected;
+}
+
+/// GitStorageDB: A simple JSON document store over Git.
+/// Each collection is a folder; each document is a `<id>.json.enc` file.
 class GitStorageDB {
   final GitStorage client;
   final CryptoService crypto;
@@ -20,7 +64,15 @@ class GitStorageDB {
     if (logListener != null && level.index >= logLevel.index) {
       logListener!.call('GitStorageDB', level, message);
     } else if (enableLogs && level.index >= LogLevel.info.index) {
-      print('[GitStorageDB] $message');
+      // Fallback to developer.log when no listener is provided
+      // Import locally to avoid polluting namespace
+      // ignore: no_leading_underscores_for_local_identifiers
+      final _level = level == LogLevel.error
+          ? 1000
+          : (level == LogLevel.debug ? 500 : 800);
+      // Using conditional import-like usage via fully qualified name requires import;
+      // place at top of file.
+      dev.log(message, name: 'GitStorageDB', level: _level);
     }
   }
 
@@ -82,7 +134,7 @@ class GitStorageDB {
     _log('createCollection: $collection criada em $basePath/$collection');
   }
 
-  /// Remove todos os documentos e a pasta da coleção.
+  /// Removes all documents and the collection folder.
   Future<void> dropCollection(String collection) async {
     _log('dropCollection: $collection');
     final path = '$basePath/$collection';
@@ -99,10 +151,18 @@ class GitStorageDB {
     // Pasta em GitHub não pode ser removida diretamente, mas sem arquivos ela deixa de existir logicamente.
   }
 
-  /// Cria/atualiza documento JSON criptografado
-  Future<void> put(String collection, String id, Map<String, dynamic> json,
-      {String? message}) async {
+  /// Creates/updates a JSON document with optional schema validation.
+  Future<void> put({
+    required String collection,
+    required String id,
+    required Map<String, dynamic> json,
+    Map<String, Type>? schema,
+    String? message,
+  }) async {
     _log('put: $collection/$id message=${message ?? ''}');
+    if (schema != null) {
+      _validateSchema(json, schema);
+    }
     final clear = jsonEncode(json);
     final envelope = await crypto.encryptString(clear, passphrase ?? '');
     await client.putString(envelope, _docPath(collection, id),
@@ -110,20 +170,29 @@ class GitStorageDB {
     _log('put: $collection/$id concluído bytes=${envelope.length}');
   }
 
-  /// Adiciona documento gerando ID conforme [IdStrategy].
-  /// Retorna o ID gerado.
-  Future<String> add(String collection, Map<String, dynamic> json,
-      {IdStrategy strategy = IdStrategy.uuidV4,
-      String? manualId,
-      String? message}) async {
+  /// Adds a document generating the ID according to [IdStrategy].
+  /// Returns the generated ID.
+  Future<String> add({
+    required String collection,
+    required Map<String, dynamic> json,
+    IdStrategy strategy = IdStrategy.uuidV4,
+    String? manualId,
+    Map<String, Type>? schema,
+    String? message,
+  }) async {
     final id = IdGenerator.generate(strategy, manualId: manualId);
     _log('add: $collection strategy=$strategy id=$id');
-    await put(collection, id, json, message: message);
+    await put(
+        collection: collection,
+        id: id,
+        json: json,
+        schema: schema,
+        message: message);
     _log('add: $collection/$id concluído');
     return id;
   }
 
-  /// Obtém documento JSON descriptografado
+  /// Gets and decrypts a JSON document
   Future<Map<String, dynamic>> get(String collection, String id) async {
     try {
       _log('get: $collection/$id');
@@ -137,18 +206,20 @@ class GitStorageDB {
     }
   }
 
-  /// Remove documento
-  Future<void> delete(String collection, String id, {String? message}) async {
+  /// Deletes a document
+  Future<void> delete(
+      {required String collection, required String id, String? message}) async {
     _log('delete: $collection/$id message=${message ?? ''}');
     await client.deleteFile(_docPath(collection, id));
     _log('delete: $collection/$id concluído');
   }
 
-  /// Carrega lista de migrations aplicadas do meta `_meta/migrations`.
+  /// Loads the list of applied migrations from `_meta/migrations`.
   Future<List<String>> getAppliedMigrations() async {
     try {
       final meta = await get('_meta', 'migrations');
-      final applied = (meta['applied'] as List?)?.map((e) => e.toString()).toList() ?? [];
+      final applied =
+          (meta['applied'] as List?)?.map((e) => e.toString()).toList() ?? [];
       _log('migrations: carregadas ${applied.length} já aplicadas');
       return applied;
     } catch (_) {
@@ -157,10 +228,11 @@ class GitStorageDB {
     }
   }
 
-  /// Aplica migrations em ordem de `id`. Persiste progresso em `_meta/migrations`.
-  Future<void> runMigrations(List<Migration> migrations, {bool stopOnError = true}) async {
+  /// Applies migrations in `id` order. Persists progress to `_meta/migrations`.
+  Future<void> runMigrations(List<Migration> migrations,
+      {bool stopOnError = true}) async {
     _log('migrations: start (${migrations.length})');
-    // Garante coleção meta
+    // Ensure meta collection
     await createCollection('_meta');
 
     // Ordena por id
@@ -178,10 +250,15 @@ class GitStorageDB {
         await m.up(this);
         applied.add(m.id);
         appliedCount++;
-        await put('_meta', 'migrations', {
-          'applied': applied,
-          'lastAppliedAt': DateTime.now().toIso8601String(),
-        }, message: 'Apply migration ${m.id}');
+        await put(
+          collection: '_meta',
+          id: 'migrations',
+          json: {
+            'applied': applied,
+            'lastAppliedAt': DateTime.now().toIso8601String(),
+          },
+          message: 'Apply migration ${m.id}',
+        );
         _log('migrations: applied ${m.id}');
       } catch (e) {
         _logError('migrations: FAILED ${m.id}: $e');
@@ -193,7 +270,7 @@ class GitStorageDB {
     _log('migrations: done applied=$appliedCount');
   }
 
-  /// Lista documentos da coleção (ids)
+  /// Lists document IDs of a collection
   Future<List<String>> listIds(String collection) async {
     _log('listIds: $collection');
     final files = await client.listFiles('$basePath/$collection');
@@ -206,27 +283,41 @@ class GitStorageDB {
     return ids;
   }
 
-  /// Atualiza documento aplicando um patch lógico
-  Future<void> update(String collection, String id,
-      Map<String, dynamic> Function(Map<String, dynamic> current) updater,
-      {String? message}) async {
+  /// Updates a document applying a logical patch
+  Future<void> update({
+    required String collection,
+    required String id,
+    required Map<String, dynamic> Function(Map<String, dynamic> current)
+        updater,
+    Map<String, Type>? schema,
+    String? message,
+  }) async {
     _log('update: $collection/$id message=${message ?? ''}');
     final current = await get(collection, id);
     final next = updater(current);
-    await put(collection, id, next,
-        message: message ?? 'DB update $collection/$id');
+    if (schema != null) {
+      _validateSchema(next, schema);
+    }
+    await put(
+      collection: collection,
+      id: id,
+      json: next,
+      message: message ?? 'DB update $collection/$id',
+    );
     _log('update: $collection/$id aplicado');
   }
 
   // Legacy `query(...)` removed. Use `collection(name).where(...).get()`.
 
-  /// Retorna todos os documentos da coleção como [GitStorageDoc].
+  /// Returns all documents of the collection as [GitStorageDoc].
   Future<List<GitStorageDoc>> getAll(String collection) async {
     _log('getAll: $collection (concorrência=$readConcurrency)');
     // Listar arquivos evita `getFile` por documento; teremos `path` e possivelmente `downloadUrl`.
     final files = await client.listFiles('$basePath/$collection');
     final suffix = crypto.type == CryptoType.none ? '.json' : '.json.enc';
-    final targets = files.where((f) => f.type == 'file' && f.name.endsWith(suffix)).toList();
+    final targets = files
+        .where((f) => f.type == 'file' && f.name.endsWith(suffix))
+        .toList();
 
     final results = <GitStorageDoc>[];
     int index = 0;

@@ -28,7 +28,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  git_storage: ^1.0.0 # Check for the latest version
+  git_storage: ^2.0.0 # Check for the latest version
 ```
 
 Then run `flutter pub get`.
@@ -164,8 +164,8 @@ When you already have the `download_url` (from `listFiles` or `getFile`), you ca
 // List files and read bytes directly from download_url
 final files = await client.listFiles('bin');
 for (final f in files) {
-  if (f.downloadUrl != null) {
-    final bytes = await client.getBytesFromUrl(f.downloadUrl!);
+  if (f.downloadUrl.isNotEmpty) {
+    final bytes = await client.getBytesFromUrl(f.downloadUrl);
     print('Read ${bytes.length} bytes from ${f.path}');
   }
 }
@@ -192,7 +192,7 @@ final db = GitStorageDB.fromConfig(
     enableLogs: true,
     logLevel: LogLevel.info,
     logListener: DefaultLogListener(level: LogLevel.info).call,
-    // Performance: controla concorrência máxima de leitura (default: 6)
+    // Performance: control maximum read concurrency (default: 6)
     readConcurrency: 8,
   ),
 );
@@ -223,7 +223,7 @@ final db = GitStorageDB(client: client, passphrase: 'strong-passphrase');
 
 Future<void> exampleDb() async {
   await db.createCollection('users');
-  await db.put('users', 'u1', {
+  await db.put(collection: 'users', id: 'u1', json: {
     'name': 'Alice',
     'email': 'alice@example.com',
   });
@@ -231,7 +231,7 @@ Future<void> exampleDb() async {
   final alice = await db.get('users', 'u1');
   print('Alice: ' + alice.toString());
 
-  await db.update('users', 'u1', (current) {
+  await db.update(collection: 'users', id: 'u1', updater: (current) {
     current['email'] = 'alice@newdomain.com';
     return current;
   });
@@ -241,7 +241,7 @@ Future<void> exampleDb() async {
 
   await db.delete('users', 'u1');
 
-  // Remover coleção inteira (remove documentos e .gitkeep)
+  // Remove entire collection (deletes documents and .gitkeep)
   await db.dropCollection('users');
 }
 ```
@@ -254,18 +254,18 @@ You can automatically generate IDs when adding documents by choosing a strategy,
 
 ```dart
 // Auto-generate ID (default UUID v4)
-final generatedId = await db.add('users', {
+final generatedId = await db.add(collection: 'users', json: {
   'name': 'Maria',
   'email': 'maria@example.com',
 });
 
 // Use timestamp in milliseconds
-final idTs = await db.add('users', {
+final idTs = await db.add(collection: 'users', json: {
   'name': 'John',
 }, strategy: IdStrategy.timestampMs);
 
 // Set ID manually
-final idManual = await db.add('users', {
+final idManual = await db.add(collection: 'users', json: {
   'name': 'Carol',
 }, strategy: IdStrategy.manual, manualId: 'user_carol');
 
@@ -273,9 +273,9 @@ final idManual = await db.add('users', {
 final doc1 = GitStorageDoc.uuidV4({ 'name': 'Luiza' });
 final doc2 = GitStorageDoc.timestampMs({ 'name': 'Marc' });
 final doc3 = GitStorageDoc.manual('user_anne', { 'name': 'Anne' });
-await db.put('users', doc1.id, doc1.data);
-await db.put('users', doc2.id, doc2.data);
-await db.put('users', doc3.id, doc3.data);
+await db.put(collection: 'users', id: doc1.id, json: doc1.data);
+await db.put(collection: 'users', id: doc2.id, json: doc2.data);
+await db.put(collection: 'users', id: doc3.id, json: doc3.data);
 ```
 
 #### Query API (chainable)
@@ -296,6 +296,61 @@ for (final doc in results) {
 }
 ```
 
+Supported operators
+
+- `equal`, `notEqual`, `greaterThan`, `greaterOrEqual`, `lessThan`, `lessOrEqual`
+- `arrayContains`, `arrayContainsAny`, `inList`, `notIn`
+- `exists`, `notExists`, `isNull`, `isNotNull`
+- `startsWith`, `endsWith`, `stringContains`, `regexMatch`
+- `isEmpty`, `isNotEmpty`
+- `containsAll`
+- `between`
+
+Examples
+
+```dart
+// Existence / nullability (value optional)
+await db
+  .collection('users')
+  .where('profile.lastLogin', DBOperator.exists)
+  .where('middleName', DBOperator.isNull)
+  .get();
+
+// String operations
+await db
+  .collection('users')
+  .where('name', DBOperator.startsWith, 'A')
+  .where('email', DBOperator.endsWith, '@example.com')
+  .where('bio', DBOperator.stringContains, 'developer')
+  .where('username', DBOperator.regexMatch, r'^user_[0-9]+$')
+  .get();
+
+// Emptiness
+await db
+  .collection('users')
+  .where('tags', DBOperator.isNotEmpty)
+  .get();
+
+// Lists
+await db
+  .collection('projects')
+  .where('roles', DBOperator.containsAll, ['admin', 'editor'])
+  .get();
+
+// Range
+await db
+  .collection('users')
+  .where('age', DBOperator.between, [18, 30])
+  .get();
+```
+
+Notes
+
+- `exists`/`notExists` check the presence of the key in the JSON, independent of its value (even if `null`).
+- `isNull`/`isNotNull` check the value itself.
+- For `exists`, `notExists`, `isNull`, `isNotNull`, `isEmpty`, and `isNotEmpty`, the `value` argument is optional and should be omitted.
+- For `regexMatch`, you can pass either a `RegExp` instance or a `String` pattern.
+
 #### Transactions
 
 Group multiple operations and commit them sequentially from the client side:
@@ -303,16 +358,16 @@ Group multiple operations and commit them sequentially from the client side:
 ```dart
 import 'package:git_storage/git_storage.dart';
 
-final tx = GitStorageTransaction(db);
-tx.put('users', 'u1', {'name': 'Ana'});
-tx.update('users', 'u1', (cur) => {...cur, 'age': 30});
+final tx = GitDBTransaction(db);
+tx.put(collection: 'users', id: 'u1', json: {'name': 'Ana'});
+tx.update(collection: 'users', id: 'u1', updater: (cur) => {...cur, 'age': 30});
 tx.delete('users', 'u2');
 await tx.commit();
 
-// Usando add dentro da transação com geração de ID
-final tx2 = GitStorageTransaction(db);
-final newId = tx2.add('users', {'name': 'Bruno'}, strategy: IdStrategy.uuidV4);
-tx2.update('users', newId, (cur) => {...cur, 'age': 22});
+// Using add inside a transaction with ID generation
+final tx2 = GitDBTransaction(db);
+final newId = tx2.add(collection: 'users', json: {'name': 'Bruno'}, strategy: IdStrategy.uuidV4);
+tx2.update(collection: 'users', id: newId, updater: (cur) => {...cur, 'age': 22});
 await tx2.commit();
 ```
 
@@ -328,10 +383,10 @@ import 'package:git_storage/git_storage.dart';
 final migrations = [
   Migration(
     id: '2025-10-05-001-init-users',
-    description: 'Cria coleção users e adiciona seed inicial',
+    description: 'Create users collection and add initial seed',
     up: (db) async {
       await db.createCollection('users');
-      await db.add('users', {
+      await db.add(collection: 'users', json: {
         'name': 'Admin',
         'email': 'admin@example.com',
         'createdAt': DateTime.now().toIso8601String(),
@@ -346,10 +401,10 @@ final migrations = [
   ),
 ];
 
-// Aplica migrations (só aplica novas)
+// Apply migrations (only applies new ones)
 await db.runMigrations(migrations);
 
-// Consultar migrations aplicadas
+// List applied migrations
 final applied = await db.getAppliedMigrations();
 print('Applied: $applied');
 ```
@@ -357,7 +412,8 @@ print('Applied: $applied');
 
 #### Logging
 
-You can enable execution logs to follow calls and results of `GitStorageDB` methods.
+You can enable execution logs to follow calls and results of `GitStorageDB` and client methods.
+Logs are emitted via a pluggable `LogListener`. The default listener uses `dart:developer.log`, integrating with IDE consoles and observatory tools.
 
 Enable via single configuration:
 
@@ -368,7 +424,7 @@ final db = GitStorageDB.fromConfig(
     token: 'YOUR_GITHUB_PAT',
     cryptoType: CryptoType.aesGcm256,
     passphrase: 'strong-passphrase',
-    enableLogs: true, // habilita logs
+    enableLogs: true, // enables console logs when no listener is provided
   ),
 );
 ```
@@ -383,7 +439,7 @@ final db = GitStorageDB(
 );
 ```
 
-Example output:
+Example output (with fallback console logs):
 
 ```
 [GitStorageDB] createCollection: users
@@ -391,10 +447,57 @@ Example output:
 [GitStorageDB] get: users/u1
 [GitStorageDB] get: users/u1 ok keys=2
 [GitStorageDB] query: users filters=1 orderBy=profile.lastLogin desc=true limit=10 offset=0
-[GitStorageDB] query: users retornou 10 documentos (limit aplicado)
+[GitStorageDB] query: users returned 10 documents (limit applied)
 ```
 
-Note: logs are informational and do not guarantee atomicity. Transaction operations are executed sequentially on the client side.
+Notes:
+- When `logListener` is provided and the message level is >= `logLevel`, the listener handles logs.
+- When `logListener` is null and `enableLogs` is true, internal fallbacks emit via `developer.log`.
+- Levels: `none`, `error`, `info`, `debug`. Only messages at or above `logLevel` are emitted.
+- Logs are informational and do not guarantee atomicity. Transaction operations are executed sequentially on the client side.
+
+#### Contracts (schema validation)
+
+Use the integrated `schema` parameter to ensure your documents have expected keys and types before writing or updating:
+
+```dart
+import 'package:git_storage/git_storage.dart';
+
+final schema = {
+  'email': String,
+  'age': int,
+  // nested paths are supported
+  'profile.active': bool,
+};
+
+// put with contract (known ID)
+await db.put(
+  collection: 'users',
+  id: 'user-123',
+  json: {'email': 'a@b.com', 'age': 30, 'profile': {'active': true}},
+  schema: schema,
+);
+
+// add with contract (auto-generated ID)
+final newId = await db.add(
+  collection: 'users',
+  json: {'email': 'c@d.com', 'age': 22, 'profile': {'active': false}},
+  schema: schema,
+);
+
+// update with contract (validates updater result)
+await db.update(
+  collection: 'users',
+  id: newId,
+  updater: (cur) => {
+    ...cur,
+    'age': (cur['age'] as int) + 1,
+  },
+  schema: schema,
+);
+```
+
+If a key is missing or the type doesn't match, a `GitStorageException` is thrown with details.
 
 
 ## Example
@@ -410,8 +513,8 @@ Contributions are welcome! If you find a bug or have a suggestion, please open a
 This package is licensed under the [MIT License](LICENSE).
 ### Performance Tips
 
-- `QueryBuilder.get()` e `GitStorageDB.getAll()` agora usam listagem de arquivos e leitura em paralelo limitada, reduzindo drasticamente chamadas por documento.
-- Ajuste `GitStorageDBConfig.readConcurrency` conforme limite e política da API (6–10 costuma ser seguro para uso pessoal). Para ambientes com PAT padrão: limite típico de 5.000 req/h; mesmo assim, evite picos agressivos.
-- `GitStorageClient.getBytes` usa diretamente a Contents API para ler conteúdo base64, evitando chamada extra de metadata.
-- Quando já tiver o `download_url`, prefira `getBytesFromUrl` para leitura direta de bytes.
-- Para operações de escrita em lote, evite paralelismo para não gerar conflitos (`409`). Use serialização, transações (`GitStorageTransaction`) ou backoff/retry.
+- `QueryBuilder.get()` and `GitStorageDB.getAll()` use file listing and bounded parallel reads, drastically reducing calls per document.
+- Tune `GitStorageDBConfig.readConcurrency` according to API limits (6–10 is typically safe for personal use). With a standard PAT: typical 5,000 req/h; avoid aggressive spikes.
+- `GitStorageClient.getBytes` uses the Contents API to read base64 content directly, avoiding an extra metadata call.
+- When you already have the `download_url`, prefer `getBytesFromUrl` for direct byte reading.
+- For batch write operations, avoid parallelism to prevent branch conflicts (`409`). Use serialization, transactions (`GitStorageTransaction`), or backoff/retry.

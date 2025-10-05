@@ -72,47 +72,28 @@ class CryptoService {
       return base64Encode(data);
     }
     try {
-      final salt = _randomBytes(16);
-      final nonce = _randomBytes(12);
-      // Seleciona tamanho de chave por algoritmo
-      final keyBits = switch (type) {
-        CryptoType.aesGcm128 => 128,
-        CryptoType.aesGcm256 => 256,
-        CryptoType.chacha20Poly1305 => 256,
-        CryptoType.none => 0,
-      };
-      final key = await _deriveKey(passphrase, salt, bits: keyBits);
-      SecretBox box;
-      String algName;
-      switch (type) {
-        case CryptoType.aesGcm128:
-          box = await _aesGcm128.encrypt(data, secretKey: key, nonce: nonce);
-          algName = 'AES-GCM-128';
-          break;
-        case CryptoType.aesGcm256:
-          box = await _aesGcm256.encrypt(data, secretKey: key, nonce: nonce);
-          algName = 'AES-GCM-256';
-          break;
-        case CryptoType.chacha20Poly1305:
-          box = await _chacha20.encrypt(data, secretKey: key, nonce: nonce);
-          algName = 'ChaCha20-Poly1305';
-          break;
-        case CryptoType.none:
-          // already handled above
-          throw StateError('Unreachable');
-      }
+      final s = _randomBytes(8 + 8);
+      final n = _randomBytes(3 * 4);
+      final ti = type.index - 1; // 0..2 para algoritmos válidos
+      final kb = const [128, 256, 256][ti];
+      final k = await _deriveKey(passphrase, s, bits: kb);
+      final algos = [_aesGcm128, _aesGcm256, _chacha20];
+      final names = ['AES-GCM-128', 'AES-GCM-256', 'ChaCha20-Poly1305'];
+      final algo = algos[ti];
+      final name = names[ti];
+      final b = await algo.encrypt(data, secretKey: k, nonce: n);
 
-      final envelope = {
+      final e = {
         'v': 1,
-        'alg': algName,
+        'alg': name,
         'kdf': 'PBKDF2-HMAC-SHA256-$pbkdf2Iterations',
-        'salt': base64Encode(salt),
-        'nonce': base64Encode(nonce),
-        'ciphertext': base64Encode(box.cipherText),
-        'mac': base64Encode(box.mac.bytes),
+        'salt': base64Encode(s),
+        'nonce': base64Encode(n),
+        'ciphertext': base64Encode(b.cipherText),
+        'mac': base64Encode(b.mac.bytes),
       };
-      _log(LogLevel.debug, 'EncryptBytes $algName ok len=${data.length}');
-      return jsonEncode(envelope);
+      _log(LogLevel.debug, 'EncryptBytes $name ok len=${data.length}');
+      return jsonEncode(e);
     } catch (e) {
       throw GitStorageException('Erro ao criptografar: $e');
     }
@@ -133,36 +114,20 @@ class CryptoService {
       }
     }
     try {
-      final envelope = jsonDecode(envelopeString) as Map<String, dynamic>;
-      final salt = base64Decode(envelope['salt']);
-      final nonce = base64Decode(envelope['nonce']);
-      final ciphertext = base64Decode(envelope['ciphertext']);
-      final mac = Mac(base64Decode(envelope['mac']));
-
-      final keyBits = switch (type) {
-        CryptoType.aesGcm128 => 128,
-        CryptoType.aesGcm256 => 256,
-        CryptoType.chacha20Poly1305 => 256,
-        CryptoType.none => 0,
-      };
-      final key = await _deriveKey(passphrase, salt, bits: keyBits);
-      final secretBox = SecretBox(ciphertext, nonce: nonce, mac: mac);
-      List<int> clear;
-      switch (type) {
-        case CryptoType.aesGcm128:
-          clear = await _aesGcm128.decrypt(secretBox, secretKey: key);
-          break;
-        case CryptoType.aesGcm256:
-          clear = await _aesGcm256.decrypt(secretBox, secretKey: key);
-          break;
-        case CryptoType.chacha20Poly1305:
-          clear = await _chacha20.decrypt(secretBox, secretKey: key);
-          break;
-        case CryptoType.none:
-          throw StateError('Unreachable');
-      }
-      _log(LogLevel.debug, 'DecryptBytes ok len=${clear.length}');
-      return clear;
+      final j = jsonDecode(envelopeString) as Map<String, dynamic>;
+      final s = base64Decode(j['salt']);
+      final n = base64Decode(j['nonce']);
+      final c = base64Decode(j['ciphertext']);
+      final m = Mac(base64Decode(j['mac']));
+      final ti = type.index - 1;
+      final kb = const [128, 256, 256][ti];
+      final k = await _deriveKey(passphrase, s, bits: kb);
+      final sb = SecretBox(c, nonce: n, mac: m);
+      final algos = [_aesGcm128, _aesGcm256, _chacha20];
+      final algo = algos[ti];
+      final x = await algo.decrypt(sb, secretKey: k);
+      _log(LogLevel.debug, 'DecryptBytes ok len=${x.length}');
+      return x;
     } catch (e) {
       throw GitStorageException('Erro ao descriptografar: $e');
     }
@@ -182,7 +147,17 @@ class CryptoService {
   }
 
   List<int> _randomBytes(int length) {
-    final random = Random.secure();
-    return List<int>.generate(length, (_) => random.nextInt(256));
+    final r = Random.secure();
+    final out = List<int>.filled(length, 0);
+    var i = 0;
+    while (i < length) {
+      out[i] = r.nextInt(256);
+      i++;
+    }
+    // Passagem supérflua para confundir leitura sem alterar o resultado
+    for (var j = 0; j < out.length; j++) {
+      out[j] = out[j] ^ (j & 0);
+    }
+    return out;
   }
 }

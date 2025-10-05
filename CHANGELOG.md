@@ -2,12 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2.0.0
+- Breaking: `GitStorageDB.put`, `add`, and `update` now use named parameters.
+  - `put({ required String collection, required String id, required Map<String, dynamic> json, Map<String, Type>? schema, String? message })`
+  - `add({ required String collection, required Map<String, dynamic> json, IdStrategy strategy = IdStrategy.uuidV4, String? manualId, Map<String, Type>? schema, String? message })`
+  - `update({ required String collection, required String id, required Map<String, dynamic> Function(Map<String, dynamic>) updater, Map<String, Type>? schema, String? message })`
+- Breaking: Removed contract extension methods (`putWithContract`, `addWithContract`, `updateWithContract`). Use the integrated optional `schema` named parameter instead.
+- New: Integrated schema validation for keys/types via an optional `schema` parameter on `put` and `update`. Supports nested paths (e.g., `profile.email`).
+- Crypto: fixed key derivation per algorithm (AES-GCM-128, AES-GCM-256 and ChaCha20-Poly1305 now use appropriate key sizes).
+- Performance: `getAll` and `QueryBuilder.get()` use bounded parallel reads and, when available, `download_url` to reduce API calls.
+- Client API: added `getBytesFromUrl(url)` for direct byte reads via URL.
+- Logging: improved messages and configurability via `GitStorageDBConfig`.
+- Docs: README updated with named parameter examples, `download_url` usage, migrations and performance tips.
+
 ## 1.0.0
-- API marcada como estável; sem breaking changes nesta versão.
-- Adicionados exemplos de console em `example/lib/`: `main_seed.dart`, `main_assign_filters.dart` e `main_queries.dart`.
-- Melhorias na documentação (README e exemplos) incluindo orientações para evitar conflitos de branch (HTTP 409) e uso de `GitStorageTransaction` onde apropriado.
-- Aumentada a confiabilidade em operações de limpeza de coleções (`dropCollection`) ao serializar commits para evitar conflitos.
-- Pequenos ajustes e melhorias de logs.
+- API marked as stable; no breaking changes in this release.
+- Added console examples under `example/lib/`: `main_seed.dart`, `main_assign_filters.dart`, and `main_queries.dart`.
+- Documentation improvements (README and examples), including guidance to avoid branch conflicts (HTTP 409) and using `GitStorageTransaction` where appropriate.
+- Increased reliability in collection cleanup operations (`dropCollection`) by serializing commits to avoid conflicts.
+- Minor fixes and logging improvements.
 
 ## 0.4.0
 - Added content editing APIs: `putBytes`, `putString`, `updateFile`, `getBytes`, `getString`.

@@ -13,7 +13,8 @@ class FakeClient implements GitStorage {
   }
 
   @override
-  Future<GitStorageFile> updateFile(File file, String path, {String? message}) async {
+  Future<GitStorageFile> updateFile(File file, String path,
+      {String? message}) async {
     throw UnimplementedError();
   }
 
@@ -92,7 +93,8 @@ class FakeClient implements GitStorage {
   }
 
   @override
-  Future<GitStorageFile> putBytes(List<int> bytes, String path, {String? message}) async {
+  Future<GitStorageFile> putBytes(List<int> bytes, String path,
+      {String? message}) async {
     store[path] = bytes;
     return GitStorageFile(
       name: path.split('/').last,
@@ -108,7 +110,8 @@ class FakeClient implements GitStorage {
   }
 
   @override
-  Future<GitStorageFile> putString(String content, String path, {String? message}) async {
+  Future<GitStorageFile> putString(String content, String path,
+      {String? message}) async {
     return putBytes(utf8.encode(content), path, message: message);
   }
 }
@@ -124,52 +127,64 @@ void main() {
         client: client,
         passphrase: 'secret',
         basePath: 'db',
-        cryptoService: CryptoService(type: CryptoType.aesGcm128, pbkdf2Iterations: 5000),
+        cryptoService:
+            CryptoService(type: CryptoType.aesGcm128, pbkdf2Iterations: 5000),
         enableLogs: false,
       );
     });
 
     test('create, put, get, update, delete', () async {
       await db.createCollection('users');
-      await db.put('users', 'u1', {'name': 'Ana'});
+      await db.put(collection: 'users', id: 'u1', json: {'name': 'Ana'});
       final doc = await db.get('users', 'u1');
       expect(doc['name'], 'Ana');
 
-      await db.update('users', 'u1', (cur) {
-        cur['name'] = 'Ana Maria';
-        return cur;
-      });
+      await db.update(
+          collection: 'users',
+          id: 'u1',
+          updater: (cur) {
+            cur['name'] = 'Ana Maria';
+            return cur;
+          });
       final doc2 = await db.get('users', 'u1');
       expect(doc2['name'], 'Ana Maria');
 
       final ids = await db.listIds('users');
       expect(ids, contains('u1'));
 
-      await db.delete('users', 'u1');
+      await db.delete(collection: 'users', id: 'u1');
       final ids2 = await db.listIds('users');
       expect(ids2.contains('u1'), isFalse);
     });
 
     test('transaction commit', () async {
-      final tx = GitStorageTransaction(db);
-      tx.put('users', 'a', {'n': 1});
-      tx.put('users', 'b', {'n': 2});
+      final tx = GitDBTransaction(db);
+      tx.put(collection: 'users', id: 'a', json: {'n': 1});
+      tx.put(collection: 'users', id: 'b', json: {'n': 2});
       await tx.commit();
       final all = await db.getAll('users');
       expect(all.length, 2);
     });
 
     test('migrations run', () async {
-      final m1 = Migration(id: '001', up: (d) async {
-        await d.createCollection('settings');
-        await d.put('settings', 'app', {'version': 1});
-      });
-      final m2 = Migration(id: '002', up: (d) async {
-        await d.update('settings', 'app', (cur) {
-          cur['version'] = (cur['version'] as int) + 1;
-          return cur;
-        });
-      });
+      final m1 = Migration(
+          id: '001',
+          up: (d) async {
+            await d.createCollection('settings');
+            await d
+                .put(collection: 'settings', id: 'app', json: {'version': 1});
+          });
+      final m2 = Migration(
+          id: '002',
+          up: (d) async {
+            await d.update(
+                collection: 'settings',
+                id: 'app',
+                updater: (cur) {
+                  cur['version'] = (cur['version'] as int) + 1;
+                  return cur;
+                });
+          });
 
       await db.runMigrations([m2, m1]); // out of order to test sorting
       final app = await db.get('settings', 'app');
