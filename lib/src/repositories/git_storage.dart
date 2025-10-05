@@ -26,6 +26,9 @@ abstract class GitStorage {
   /// Reads UTF-8 string contents for a file.
   Future<String> getString(String path);
 
+  /// Reads bytes directly from a given URL (e.g., GitHub download_url).
+  Future<List<int>> getBytesFromUrl(String url);
+
   /// Lists the files and directories in a given path in the Git repository.
   ///
   /// Returns a [Future] that completes with a list of [GitStorageFile] objects.

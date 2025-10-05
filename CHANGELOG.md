@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.0
+- API marcada como estável; sem breaking changes nesta versão.
+- Adicionados exemplos de console em `example/lib/`: `main_seed.dart`, `main_assign_filters.dart` e `main_queries.dart`.
+- Melhorias na documentação (README e exemplos) incluindo orientações para evitar conflitos de branch (HTTP 409) e uso de `GitStorageTransaction` onde apropriado.
+- Aumentada a confiabilidade em operações de limpeza de coleções (`dropCollection`) ao serializar commits para evitar conflitos.
+- Pequenos ajustes e melhorias de logs.
+
 ## 0.4.0
 - Added content editing APIs: `putBytes`, `putString`, `updateFile`, `getBytes`, `getString`.
 - Added `GitStorageDB` for encrypted or plain JSON documents stored in the repository.

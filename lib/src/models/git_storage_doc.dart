@@ -14,6 +14,24 @@ class GitStorageDoc {
     return GitStorageDoc(id: id, data: data);
   }
 
+  /// Construtor de conveniência para gerar ID UUID v4.
+  factory GitStorageDoc.uuidV4(Map<String, dynamic> data) {
+    final id = IdGenerator.generate(IdStrategy.uuidV4);
+    return GitStorageDoc(id: id, data: data);
+  }
+
+  /// Construtor de conveniência para gerar ID baseado em timestamp (ms).
+  factory GitStorageDoc.timestampMs(Map<String, dynamic> data) {
+    final id = IdGenerator.generate(IdStrategy.timestampMs);
+    return GitStorageDoc(id: id, data: data);
+  }
+
+  /// Construtor de conveniência para usar um ID manual.
+  factory GitStorageDoc.manual(String manualId, Map<String, dynamic> data) {
+    final id = IdGenerator.generate(IdStrategy.manual, manualId: manualId);
+    return GitStorageDoc(id: id, data: data);
+  }
+
   /// Obtém valor por caminho com dot-notation, ex: `profile.name`.
   dynamic getAtPath(String path) {
     final parts = path.split('.');

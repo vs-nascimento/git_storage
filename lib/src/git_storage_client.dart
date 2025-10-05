@@ -7,6 +7,7 @@ import 'exceptions/exceptions.dart';
 import 'models/git_storage_file.dart';
 import 'repositories/git_storage.dart';
 import 'services/git_storage_service.dart';
+import 'services/logging.dart';
 
 /// A client for interacting with a Git repository as a storage system.
 class GitStorageClient implements GitStorage {
@@ -33,12 +34,23 @@ class GitStorageClient implements GitStorage {
     required this.repoUrl,
     required this.token,
     this.branch = 'main',
+    this.logListener,
+    this.logLevel = LogLevel.none,
   }) {
     final parts = repoUrl.replaceAll('.git', '').split('/');
     _owner = parts[parts.length - 2];
     _repo = parts.last;
 
     service = GitStorageService(this);
+  }
+
+  final LogListener? logListener;
+  final LogLevel logLevel;
+
+  void _emit(LogLevel level, String message) {
+    if (logListener != null && level.index >= logLevel.index) {
+      logListener!.call('GitStorageClient', level, message);
+    }
   }
 
   /// Builds the API URL for a given path.
@@ -55,12 +67,14 @@ class GitStorageClient implements GitStorage {
 
   @override
   Future<GitStorageFile> uploadFile(File file, String path) async {
+    _emit(LogLevel.debug, 'uploadFile path=$path');
     return _uploadFile(file, path);
   }
 
   @override
   Future<GitStorageFile> updateFile(File file, String path, {String? message}) async {
     final bytes = await file.readAsBytes();
+    _emit(LogLevel.debug, 'updateFile path=$path len=${bytes.length}');
     return putBytes(bytes, path, message: message);
   }
 
@@ -70,6 +84,7 @@ class GitStorageClient implements GitStorage {
       {int retryCount = 0}) async {
     try {
       final content = base64Encode(await file.readAsBytes());
+      _emit(LogLevel.debug, 'upload _uploadFile path=$path retry=$retryCount len=${content.length}');
 
       String filePath = path;
       if (retryCount > 0) {
@@ -93,14 +108,19 @@ class GitStorageClient implements GitStorage {
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final jsonResp = jsonDecode(response.body);
+        _emit(LogLevel.info, 'upload ok path=$filePath');
         return GitStorageFile.fromJson(jsonResp['content']);
       } else if (response.statusCode == 422) {
         // file already exists → try to rename
+        _emit(LogLevel.info, 'upload conflict -> retry rename');
         return _uploadFile(file, path, retryCount: retryCount + 1);
       } else {
-        throw GitStorageException(_mapError(response));
+        final err = _mapError(response);
+        _emit(LogLevel.error, 'upload failed: $err');
+        throw GitStorageException(err);
       }
     } catch (e) {
+      _emit(LogLevel.error, 'upload exception: $e');
       throw GitStorageException('Error uploading file: $e');
     }
   }
@@ -110,47 +130,65 @@ class GitStorageClient implements GitStorage {
   Future<GitStorageFile> getFile(String path) async {
     try {
       final url = "${_buildUrl(path)}?ref=$branch";
+      _emit(LogLevel.debug, 'getFile path=$path');
 
       final response = await http.get(Uri.parse(url), headers: _headers);
 
       if (response.statusCode == 200) {
         final jsonResp = jsonDecode(response.body);
+        _emit(LogLevel.info, 'getFile ok path=$path');
         return GitStorageFile.fromJson(jsonResp);
       } else {
-        throw GitStorageException(_mapError(response));
+        final err = _mapError(response);
+        _emit(LogLevel.error, 'getFile failed: $err');
+        throw GitStorageException(err);
       }
     } catch (e) {
+      _emit(LogLevel.error, 'getFile exception: $e');
       throw GitStorageException('Error getting file: $e');
     }
   }
 
   @override
   Future<List<int>> getBytes(String path) async {
-    final file = await getFile(path);
-    if (file.downloadUrl.isNotEmpty) {
-      final response = await http.get(Uri.parse(file.downloadUrl), headers: _headers);
-      if (response.statusCode == 200) {
-        return response.bodyBytes;
-      }
-    }
-    // fallback: use contents API to read base64 content
+    // Otimização: usar diretamente a API de contents para obter conteúdo base64
+    // Evita uma chamada prévia a getFile() apenas para buscar download_url.
     final url = "${_buildUrl(path)}?ref=$branch";
     final response = await http.get(Uri.parse(url), headers: _headers);
     if (response.statusCode == 200) {
       final jsonResp = jsonDecode(response.body);
       final contentBase64 = (jsonResp['content'] as String?)?.replaceAll('\n', '') ?? '';
       if (contentBase64.isEmpty) {
+        _emit(LogLevel.error, 'getBytes empty content path=$path');
         throw GitStorageException('Conteúdo vazio para $path');
       }
+      _emit(LogLevel.debug, 'getBytes base64 len=${contentBase64.length}');
       return base64Decode(contentBase64);
     }
-    throw GitStorageException(_mapError(response));
+    final err = _mapError(response);
+    _emit(LogLevel.error, 'getBytes failed: $err');
+    throw GitStorageException(err);
   }
 
   @override
   Future<String> getString(String path) async {
     final bytes = await getBytes(path);
+    _emit(LogLevel.debug, 'getString len=${bytes.length} path=$path');
     return utf8.decode(bytes);
+  }
+
+  /// Baixa bytes diretamente de uma URL (ex.: download_url do GitHub).
+  /// Útil quando já possuímos a URL e queremos evitar a chamada de metadata.
+  @override
+  Future<List<int>> getBytesFromUrl(String url) async {
+    final response = await http.get(Uri.parse(url), headers: _headers);
+    if (response.statusCode == 200) {
+      _emit(LogLevel.debug, 'getBytesFromUrl ok url=$url len=${response.bodyBytes.length}');
+      return response.bodyBytes;
+    }
+    final err = _mapError(response);
+    _emit(LogLevel.error, 'getBytesFromUrl failed: $err');
+    throw GitStorageException(err);
   }
 
   /// List files and folders in a directory
@@ -158,16 +196,21 @@ class GitStorageClient implements GitStorage {
   Future<List<GitStorageFile>> listFiles(String path) async {
     try {
       final url = "${_buildUrl(path)}?ref=$branch";
+      _emit(LogLevel.debug, 'listFiles path=$path');
 
       final response = await http.get(Uri.parse(url), headers: _headers);
 
       if (response.statusCode == 200) {
         final jsonResp = jsonDecode(response.body) as List;
+        _emit(LogLevel.info, 'listFiles ok count=${jsonResp.length}');
         return jsonResp.map((item) => GitStorageFile.fromJson(item)).toList();
       } else {
-        throw GitStorageException(_mapError(response));
+        final err = _mapError(response);
+        _emit(LogLevel.error, 'listFiles failed: $err');
+        throw GitStorageException(err);
       }
     } catch (e) {
+      _emit(LogLevel.error, 'listFiles exception: $e');
       throw GitStorageException('Error listing files: $e');
     }
   }
@@ -176,6 +219,7 @@ class GitStorageClient implements GitStorage {
   @override
   Future<GitStorageFile> createFolder(String folderPath) async {
     // Idempotent: ensures the placeholder exists without creating duplicates
+    _emit(LogLevel.debug, 'createFolder $folderPath');
     return putString('', "$folderPath/.gitkeep", message: "Ensure folder: $folderPath");
   }
 
@@ -184,6 +228,7 @@ class GitStorageClient implements GitStorage {
     try {
       final file = await getFile(path);
       final url = _buildUrl(path);
+      _emit(LogLevel.debug, 'deleteFile path=$path sha=${file.sha}');
       final response = await http.delete(
         Uri.parse(url),
         headers: _headers,
@@ -194,11 +239,15 @@ class GitStorageClient implements GitStorage {
         }),
       );
       if (response.statusCode == 200) {
+        _emit(LogLevel.info, 'deleteFile ok path=$path');
         return;
       } else {
-        throw GitStorageException(_mapError(response));
+        final err = _mapError(response);
+        _emit(LogLevel.error, 'deleteFile failed: $err');
+        throw GitStorageException(err);
       }
     } catch (e) {
+      _emit(LogLevel.error, 'deleteFile exception: $e');
       throw GitStorageException('Error deleting file: $e');
     }
   }
@@ -222,6 +271,7 @@ class GitStorageClient implements GitStorage {
   Future<GitStorageFile> _putContent(String path, List<int> bytes, {String? message}) async {
     final content = base64Encode(bytes);
     final url = _buildUrl(path);
+    _emit(LogLevel.debug, 'putContent path=$path len=${bytes.length}');
 
     String? sha;
     try {
@@ -242,18 +292,23 @@ class GitStorageClient implements GitStorage {
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       final jsonResp = jsonDecode(response.body);
+      _emit(LogLevel.info, 'putContent ok path=$path');
       return GitStorageFile.fromJson(jsonResp['content']);
     }
-    throw GitStorageException(_mapError(response));
+    final err = _mapError(response);
+    _emit(LogLevel.error, 'putContent failed: $err');
+    throw GitStorageException(err);
   }
 
   @override
   Future<GitStorageFile> putBytes(List<int> bytes, String path, {String? message}) {
+    _emit(LogLevel.debug, 'putBytes path=$path len=${bytes.length}');
     return _putContent(path, bytes, message: message);
   }
 
   @override
   Future<GitStorageFile> putString(String content, String path, {String? message}) {
+    _emit(LogLevel.debug, 'putString path=$path len=${content.length}');
     return _putContent(path, utf8.encode(content), message: message);
   }
 }

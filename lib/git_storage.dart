@@ -11,3 +11,4 @@ export 'src/models/id_strategy.dart';
 export 'src/models/migration.dart';
 export 'src/services/query_builder.dart';
 export 'src/services/git_storage_transaction.dart';
+export 'src/services/logging.dart';

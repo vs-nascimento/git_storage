@@ -19,6 +19,8 @@ This package provides a convenient way to interact with GitHub repositories for 
 - **Read/Write content:** Read/write bytes and strings with automatic create/update.
 - **GitStorageDB:** Store JSON (encrypted or plain) by collection.
 - **Collections, Query and Transactions:** Create/drop collections, query with filters, and batch operations.
+ - **Crypto variants:** AES-GCM-128/256 and ChaCha20-Poly1305 with configurable PBKDF2 iterations.
+ - **Logging:** Pluggable `LogListener` with levels (none, info, debug, error) for API and DB operations.
 
 ## Installation
 
@@ -26,7 +28,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  git_storage: ^0.4.0 # Check for the latest version
+  git_storage: ^1.0.0 # Check for the latest version
 ```
 
 Then run `flutter pub get`.
@@ -131,6 +133,7 @@ Future<void> delete(String path) async {
     print('An error occurred: $e');
   }
 }
+```
 
 #### Edit and Read Content
 
@@ -153,6 +156,21 @@ final data = await client.getBytes('bin/data.bin');
 await client.updateFile(File('/local/path/config.json'), 'configs/config.json');
 ```
 
+#### Read bytes via download_url
+
+When you already have the `download_url` (from `listFiles` or `getFile`), you can read the raw bytes directly using `getBytesFromUrl`, reducing extra API calls:
+
+```dart
+// List files and read bytes directly from download_url
+final files = await client.listFiles('bin');
+for (final f in files) {
+  if (f.downloadUrl != null) {
+    final bytes = await client.getBytesFromUrl(f.downloadUrl!);
+    print('Read ${bytes.length} bytes from ${f.path}');
+  }
+}
+```
+
 ### 4. GitStorageDB (JSON storage — encrypted or not)
 
 Use `GitStorageDB` to persist JSON documents in the repository. Each collection is a folder under `db/`. With encryption enabled, each document is a `<id>.json.enc` file encrypted with AES-GCM and a key derived via PBKDF2-HMAC-SHA256.
@@ -168,8 +186,14 @@ final db = GitStorageDB.fromConfig(
     token: 'YOUR_GITHUB_PAT',
     branch: 'main',
     basePath: 'db',
-    cryptoType: CryptoType.aesGcm256, // or CryptoType.none
+    cryptoType: CryptoType.aesGcm256, // or CryptoType.none, aesGcm128, chacha20Poly1305
     passphrase: 'strong-passphrase',   // required if not using none
+    pbkdf2Iterations: 150000,
+    enableLogs: true,
+    logLevel: LogLevel.info,
+    logListener: DefaultLogListener(level: LogLevel.info).call,
+    // Performance: controla concorrência máxima de leitura (default: 6)
+    readConcurrency: 8,
   ),
 );
 
@@ -180,6 +204,9 @@ final dbPlain = GitStorageDB.fromConfig(
     token: 'YOUR_GITHUB_PAT',
     cryptoType: CryptoType.none,
     basePath: 'db_plain',
+    enableLogs: true,
+    logLevel: LogLevel.debug,
+    logListener: DefaultLogListener(level: LogLevel.debug).call,
   ),
 );
 ```
@@ -223,81 +250,50 @@ Security note: choose a strong passphrase and rotate it as needed. When `cryptoT
 
 #### ID Strategy (UUID, timestamp, manual)
 
-You can automatically generate IDs when adding documents by choosing the desired strategy, or opt to set them manually:
+You can automatically generate IDs when adding documents by choosing a strategy, or set IDs manually. You can also create a `GitStorageDoc` with the desired strategy:
 
 ```dart
-// Gerar ID automaticamente (padrão UUID v4)
+// Auto-generate ID (default UUID v4)
 final generatedId = await db.add('users', {
   'name': 'Maria',
   'email': 'maria@example.com',
 });
 
-// Usar timestamp em milissegundos
+// Use timestamp in milliseconds
 final idTs = await db.add('users', {
-  'name': 'João',
+  'name': 'John',
 }, strategy: IdStrategy.timestampMs);
 
-// Definir manualmente
+// Set ID manually
 final idManual = await db.add('users', {
   'name': 'Carol',
 }, strategy: IdStrategy.manual, manualId: 'user_carol');
 
-// Também é possível criar um GitStorageDoc com ID gerado
-final doc = GitStorageDoc.create(IdStrategy.uuidV4, {
-  'name': 'Luiza',
-});
-await db.put('users', doc.id, doc.data);
-```
+// Create a GitStorageDoc with generated ID using convenience constructors
+final doc1 = GitStorageDoc.uuidV4({ 'name': 'Luiza' });
+final doc2 = GitStorageDoc.timestampMs({ 'name': 'Marc' });
+final doc3 = GitStorageDoc.manual('user_anne', { 'name': 'Anne' });
+await db.put('users', doc1.id, doc1.data);
+await db.put('users', doc2.id, doc2.data);
+await db.put('users', doc3.id, doc3.data);
 ```
 
-#### Query API (where, orderBy, limit)
+#### Query API (chainable)
 
-Você pode consultar uma coleção usando filtros, ordenação e limite de resultados:
+Query collections using a chainable style similar to Firebase. No need to manually build or pass queries — just chain and call `get()`:
 
 ```dart
-import 'package:git_storage/git_storage.dart';
-
-final db = GitStorageDB.fromConfig(GitStorageDBConfig(
-  repoUrl: 'https://github.com/your-user/your-repository.git',
-  token: 'YOUR_GITHUB_PAT',
-  cryptoType: CryptoType.aesGcm256,
-  passphrase: 'strong-passphrase',
-));
-
-final results = await db.query(
-  'users',
-  filters: [
-    DBFilter.where('age', DBOperator.greaterOrEqual, 18),
-    DBFilter.where('tags', DBOperator.arrayContains, 'premium'),
-  ],
-  orderBy: 'profile.lastLogin',
-  descending: true,
-  limit: 10,
-);
+final results = await db
+  .collection('users')
+  .where('age', DBOperator.greaterOrEqual, 18)
+  .where('tags', DBOperator.arrayContains, 'premium')
+  .orderBy('profile.lastLogin', descending: true)
+  .limit(10)
+  .get();
 
 for (final doc in results) {
   print('id=${doc.id} name=${doc.data['name']}');
 }
-```
-
-Or using the chainable `QueryBuilder`:
-
-```dart
-final qb = db.queryBuilder('orders')
-  .where('status', DBOperator.equal, 'paid')
-  .where('items', DBOperator.arrayContainsAny, ['sku123', 'sku456'])
-  .orderBy('createdAt', descending: true)
-  .offset(20)
-  .limit(20);
-
-final res = await db.query(
-  qb.getCollection(),
-  filters: qb.getFilters(),
-  orderBy: qb.getOrderBy(),
-  descending: qb.getDescending(),
-  limit: qb.getLimit(),
-  offset: qb.getOffset(),
-);
 ```
 
 #### Transactions
@@ -412,3 +408,10 @@ Contributions are welcome! If you find a bug or have a suggestion, please open a
 ## License
 
 This package is licensed under the [MIT License](LICENSE).
+### Performance Tips
+
+- `QueryBuilder.get()` e `GitStorageDB.getAll()` agora usam listagem de arquivos e leitura em paralelo limitada, reduzindo drasticamente chamadas por documento.
+- Ajuste `GitStorageDBConfig.readConcurrency` conforme limite e política da API (6–10 costuma ser seguro para uso pessoal). Para ambientes com PAT padrão: limite típico de 5.000 req/h; mesmo assim, evite picos agressivos.
+- `GitStorageClient.getBytes` usa diretamente a Contents API para ler conteúdo base64, evitando chamada extra de metadata.
+- Quando já tiver o `download_url`, prefira `getBytesFromUrl` para leitura direta de bytes.
+- Para operações de escrita em lote, evite paralelismo para não gerar conflitos (`409`). Use serialização, transações (`GitStorageTransaction`) ou backoff/retry.

@@ -2,21 +2,30 @@ import 'dart:convert';
 
 import 'package:git_storage/git_storage.dart';
 import '../models/migration.dart';
+import 'logging.dart';
 
 /// GitStorageDB: Um "banco" de documentos JSON por cima do Git.
 /// Cada coleção é uma pasta; cada documento é um arquivo `<id>.json.enc`.
 class GitStorageDB {
-  final GitStorageClient client;
+  final GitStorage client;
   final CryptoService crypto;
   final String? passphrase;
   final String basePath;
   final bool enableLogs;
+  final int readConcurrency;
+  final LogListener? logListener;
+  final LogLevel logLevel;
 
-  void _log(String message) {
-    if (enableLogs) {
+  void _emit(LogLevel level, String message) {
+    if (logListener != null && level.index >= logLevel.index) {
+      logListener!.call('GitStorageDB', level, message);
+    } else if (enableLogs && level.index >= LogLevel.info.index) {
       print('[GitStorageDB] $message');
     }
   }
+
+  void _log(String message) => _emit(LogLevel.info, message);
+  void _logError(String message) => _emit(LogLevel.error, message);
 
   /// Construtor antigo (compatível), usa AES-GCM por padrão.
   GitStorageDB({
@@ -25,6 +34,9 @@ class GitStorageDB {
     this.basePath = 'db',
     CryptoService? cryptoService,
     this.enableLogs = false,
+    this.readConcurrency = 6,
+    this.logListener,
+    this.logLevel = LogLevel.none,
   }) : crypto = cryptoService ?? CryptoService();
 
   /// Novo construtor com configuração única.
@@ -34,8 +46,15 @@ class GitStorageDB {
           repoUrl: config.repoUrl!,
           token: config.token!,
           branch: config.branch,
+          logListener: config.logListener,
+          logLevel: config.logLevel,
         );
-    final crypto = CryptoService(type: config.cryptoType);
+    final crypto = CryptoService(
+      type: config.cryptoType,
+      pbkdf2Iterations: config.pbkdf2Iterations,
+      logListener: config.logListener,
+      logLevel: config.logLevel,
+    );
     return GitStorageDB(
       client: client,
       passphrase:
@@ -43,10 +62,14 @@ class GitStorageDB {
       basePath: config.basePath,
       cryptoService: crypto,
       enableLogs: config.enableLogs,
+      readConcurrency: config.readConcurrency,
+      logListener: config.logListener,
+      logLevel: config.logLevel,
     );
   }
 
-  QueryBuilder queryBuilder(String collection) => QueryBuilder(collection);
+  /// Entrada encadeada tipo Firebase: `db.collection('users').where(...).get()`
+  QueryBuilder collection(String name) => QueryBuilder.withDB(this, name);
 
   String _docPath(String collection, String id) {
     final ext = crypto.type == CryptoType.none ? '.json' : '.json.enc';
@@ -109,6 +132,7 @@ class GitStorageDB {
       _log('get: $collection/$id ok keys=${data.length}');
       return data;
     } catch (e) {
+      _logError('get FAILED: $collection/$id: $e');
       throw GitStorageException('Erro ao obter documento $collection/$id: $e');
     }
   }
@@ -160,7 +184,7 @@ class GitStorageDB {
         }, message: 'Apply migration ${m.id}');
         _log('migrations: applied ${m.id}');
       } catch (e) {
-        _log('migrations: FAILED ${m.id}: $e');
+        _logError('migrations: FAILED ${m.id}: $e');
         if (stopOnError) {
           throw GitStorageException('Falha ao aplicar migration ${m.id}: $e');
         }
@@ -194,78 +218,47 @@ class GitStorageDB {
     _log('update: $collection/$id aplicado');
   }
 
-  /// Consulta documentos em uma coleção com filtros, ordenação e limite.
-  Future<List<GitStorageDoc>> query(
-    String collection, {
-    List<DBFilter> filters = const [],
-    String? orderBy,
-    bool descending = false,
-    int? limit,
-    int offset = 0,
-  }) async {
-    _log(
-        'query: $collection filters=${filters.length} orderBy=$orderBy desc=$descending limit=$limit offset=$offset');
-    final ids = await listIds(collection);
-    final docs = <GitStorageDoc>[];
-    for (final id in ids) {
-      try {
-        final data = await get(collection, id);
-        docs.add(GitStorageDoc(id: id, data: data));
-      } catch (_) {
-        // Ignora documentos inválidos
-      }
-    }
-
-    // Aplica filtros
-    final filtered = docs.where((doc) {
-      for (final f in filters) {
-        if (!f.matches(doc.data)) return false;
-      }
-      return true;
-    }).toList();
-
-    // Ordena
-    if (orderBy != null) {
-      filtered.sort((a, b) {
-        final va = a.getAtPath(orderBy);
-        final vb = b.getAtPath(orderBy);
-        if (va is Comparable && vb is Comparable) {
-          final cmp = (va as Comparable).compareTo(vb);
-          return descending ? -cmp : cmp;
-        }
-        return 0;
-      });
-    }
-
-    // Offset
-    if (offset > 0 && offset < filtered.length) {
-      filtered.removeRange(0, offset);
-    }
-    // Limita
-    if (limit != null && limit > 0 && filtered.length > limit) {
-      final out = filtered.sublist(0, limit);
-      _log(
-          'query: $collection retornou ${out.length} documentos (limit aplicado)');
-      return out;
-    }
-    _log('query: $collection retornou ${filtered.length} documentos');
-    return filtered;
-  }
+  // Legacy `query(...)` removed. Use `collection(name).where(...).get()`.
 
   /// Retorna todos os documentos da coleção como [GitStorageDoc].
   Future<List<GitStorageDoc>> getAll(String collection) async {
-    _log('getAll: $collection');
-    final ids = await listIds(collection);
-    final docs = <GitStorageDoc>[];
-    for (final id in ids) {
-      try {
-        final data = await get(collection, id);
-        docs.add(GitStorageDoc(id: id, data: data));
-      } catch (_) {
-        // Ignora documentos inválidos
-      }
+    _log('getAll: $collection (concorrência=$readConcurrency)');
+    // Listar arquivos evita `getFile` por documento; teremos `path` e possivelmente `downloadUrl`.
+    final files = await client.listFiles('$basePath/$collection');
+    final suffix = crypto.type == CryptoType.none ? '.json' : '.json.enc';
+    final targets = files.where((f) => f.type == 'file' && f.name.endsWith(suffix)).toList();
+
+    final results = <GitStorageDoc>[];
+    int index = 0;
+    while (index < targets.length) {
+      var end = index + readConcurrency;
+      if (end > targets.length) end = targets.length;
+      final batch = targets.sublist(index, end);
+      // Executa downloads em paralelo limitado
+      final futures = batch.map((f) async {
+        try {
+          // Se houver downloadUrl, usa direto; caso contrário cai para contents API via getString.
+          String envelope;
+          if (f.downloadUrl.isNotEmpty) {
+            final bytes = await client.getBytesFromUrl(f.downloadUrl);
+            envelope = utf8.decode(bytes);
+          } else {
+            envelope = await client.getString(f.path);
+          }
+          final data = await crypto.decryptToJson(envelope, passphrase ?? '');
+          final id = f.name.replaceAll(suffix, '');
+          return GitStorageDoc(id: id, data: data);
+        } catch (_) {
+          return null; // Ignora documentos inválidos
+        }
+      }).toList();
+
+      final batchResults = await Future.wait(futures);
+      results.addAll(batchResults.whereType<GitStorageDoc>());
+      index += batch.length;
     }
-    _log('getAll: $collection retornou ${docs.length} documentos');
-    return docs;
+
+    _log('getAll: $collection retornou ${results.length} documentos');
+    return results;
   }
 }
