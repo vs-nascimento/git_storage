@@ -42,3 +42,26 @@ final dbCfg = GitStorageDB.fromConfig(GitStorageDBConfig(
 ```
 
 Run the app with `flutter run`.
+
+## CLI mains (sem UI)
+
+Além do app Flutter, há três entrypoints de console em `lib/` que você pode executar com `dart run`:
+
+- `lib/main_seed.dart`: semeia coleções `users` e `products` com dados básicos.
+- `lib/main_assign_filters.dart`: filtra usuários e atribui produtos usando `QueryBuilder`.
+- `lib/main_queries.dart`: demonstra consultas diversas (where, orderBy, limit, offset, arrayContains).
+
+Como executar (configure variáveis de ambiente ou edite o arquivo):
+
+```
+export REPO_URL=https://github.com/your-user/your-repository.git
+export GITHUB_TOKEN=YOUR_GITHUB_PAT
+export BRANCH=main
+export DB_PASSPHRASE=strong-passphrase
+
+dart run lib/main_seed.dart
+dart run lib/main_assign_filters.dart
+dart run lib/main_queries.dart
+```
+
+Observação: operações que geram commits em série podem demorar devido à API do GitHub. Evite concorrência alta para não gerar conflitos de branch (HTTP 409).
