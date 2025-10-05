@@ -58,6 +58,12 @@ class GitStorageClient implements GitStorage {
     return _uploadFile(file, path);
   }
 
+  @override
+  Future<GitStorageFile> updateFile(File file, String path, {String? message}) async {
+    final bytes = await file.readAsBytes();
+    return putBytes(bytes, path, message: message);
+  }
+
   /// Uploads a file to the repository, with a retry mechanism in case of
   /// a name conflict.
   Future<GitStorageFile> _uploadFile(File file, String path,
@@ -118,6 +124,35 @@ class GitStorageClient implements GitStorage {
     }
   }
 
+  @override
+  Future<List<int>> getBytes(String path) async {
+    final file = await getFile(path);
+    if (file.downloadUrl.isNotEmpty) {
+      final response = await http.get(Uri.parse(file.downloadUrl), headers: _headers);
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      }
+    }
+    // fallback: use contents API to read base64 content
+    final url = "${_buildUrl(path)}?ref=$branch";
+    final response = await http.get(Uri.parse(url), headers: _headers);
+    if (response.statusCode == 200) {
+      final jsonResp = jsonDecode(response.body);
+      final contentBase64 = (jsonResp['content'] as String?)?.replaceAll('\n', '') ?? '';
+      if (contentBase64.isEmpty) {
+        throw GitStorageException('Conteúdo vazio para $path');
+      }
+      return base64Decode(contentBase64);
+    }
+    throw GitStorageException(_mapError(response));
+  }
+
+  @override
+  Future<String> getString(String path) async {
+    final bytes = await getBytes(path);
+    return utf8.decode(bytes);
+  }
+
   /// List files and folders in a directory
   @override
   Future<List<GitStorageFile>> listFiles(String path) async {
@@ -140,8 +175,8 @@ class GitStorageClient implements GitStorage {
   /// Create a "folder" (in practice, it creates a `.gitkeep` file)
   @override
   Future<GitStorageFile> createFolder(String folderPath) async {
-    final placeholder = File('.gitkeep')..writeAsStringSync('');
-    return uploadFile(placeholder, "$folderPath/.gitkeep");
+    // Idempotent: ensures the placeholder exists without creating duplicates
+    return putString('', "$folderPath/.gitkeep", message: "Ensure folder: $folderPath");
   }
 
   @override
@@ -182,5 +217,43 @@ class GitStorageClient implements GitStorage {
       default:
         return "Error ${response.statusCode}: ${response.body}";
     }
+  }
+
+  Future<GitStorageFile> _putContent(String path, List<int> bytes, {String? message}) async {
+    final content = base64Encode(bytes);
+    final url = _buildUrl(path);
+
+    String? sha;
+    try {
+      final existing = await getFile(path);
+      sha = existing.sha;
+    } catch (_) {}
+
+    final response = await http.put(
+      Uri.parse(url),
+      headers: _headers,
+      body: jsonEncode({
+        "message": message ?? (sha == null ? "Added file: $path" : "Updated file: $path"),
+        "branch": branch,
+        "content": content,
+        if (sha != null) "sha": sha,
+      }),
+    );
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final jsonResp = jsonDecode(response.body);
+      return GitStorageFile.fromJson(jsonResp['content']);
+    }
+    throw GitStorageException(_mapError(response));
+  }
+
+  @override
+  Future<GitStorageFile> putBytes(List<int> bytes, String path, {String? message}) {
+    return _putContent(path, bytes, message: message);
+  }
+
+  @override
+  Future<GitStorageFile> putString(String content, String path, {String? message}) {
+    return _putContent(path, utf8.encode(content), message: message);
   }
 }

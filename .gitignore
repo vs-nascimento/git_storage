@@ -16,6 +16,8 @@
 *.iws
 out/
 gen/
+.env
+*.env
 
 # Flutter
 .dart_tool/

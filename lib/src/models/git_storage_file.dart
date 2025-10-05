@@ -52,7 +52,7 @@ class GitStorageFile {
       url: json['url'],
       htmlUrl: json['html_url'],
       gitUrl: json['git_url'],
-      downloadUrl: json['download_url'],
+      downloadUrl: json['download_url'] ?? '',
       type: json['type'],
     );
   }
